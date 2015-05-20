@@ -1130,7 +1130,7 @@ IFloodlightModule, IInfoProvider {
 	protected List<OFAction> getDiscoveryActions (IOFSwitch sw, OFPort port){
 		// set actions
 		List<OFAction> actions = new ArrayList<OFAction>();
-		actions.add(sw.getOFFactory().actions().buildOutput().setPort(port).build());
+		actions.add(sw.getOFFactory().actions().buildOutput().setPort(port).setMaxLen(0xffFFffFF).build());
 		return actions;
 	}
 

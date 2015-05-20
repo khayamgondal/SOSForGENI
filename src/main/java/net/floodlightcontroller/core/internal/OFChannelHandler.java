@@ -253,6 +253,13 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 				case EXPERIMENTER:
 					processOFExperimenter((OFExperimenter)m);
 					break;
+				/* Echos can be sent at any time */
+				case ECHO_REPLY:
+					processOFEchoReply((OFEchoReply)m);
+					break;
+				case ECHO_REQUEST:
+					processOFEchoRequest((OFEchoRequest)m);
+					break;
 				default:
 					illegalMessageReceived(m);
 					break;
@@ -260,8 +267,6 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 			}
 			else{
 				switch(m.getType()){
-				// Always handle echos at the channel level!
-				// Echos should only be sent in the complete.
 				case ECHO_REPLY:
 					processOFEchoReply((OFEchoReply)m);
 					break;
@@ -336,6 +341,7 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 			setState(new CompleteState());
 
 		}
+		
 		@Override
 		void enterState() throws IOException {
 			sendFeaturesRequest();
@@ -373,7 +379,6 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 			}
 			// Notify the connection broker
 			notifyConnectionOpened(connection);
-
 		}
 	};
 
