@@ -319,7 +319,11 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule {
 				mb.setExact(MatchField.IP_PROTO, IpProtocol.UDP)
 				.setExact(MatchField.UDP_SRC, udp.getSourcePort())
 				.setExact(MatchField.UDP_DST, udp.getDestinationPort());
-			}	
+			} else if (ip.getProtocol().equals(IpProtocol.ICMP)) {
+				mb.setExact(MatchField.IP_PROTO, IpProtocol.ICMP);
+			} else if (ip.getProtocol().equals(IpProtocol.IGMP)) {
+				mb.setExact(MatchField.IP_PROTO, IpProtocol.IGMP);
+			}
 		} else if (eth.getEtherType() == EthType.ARP) { /* shallow check for equality is okay for EthType */
 			mb.setExact(MatchField.ETH_TYPE, EthType.ARP);
 		}

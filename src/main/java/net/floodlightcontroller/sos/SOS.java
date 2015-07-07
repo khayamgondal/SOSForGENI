@@ -242,7 +242,8 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 
 	@Override
 	public boolean isCallbackOrderingPostreq(OFType type, String name) {
-		if (type == OFType.PACKET_IN && name.equalsIgnoreCase(Forwarding.class.getSimpleName())) {
+		if (type == OFType.PACKET_IN && name.equals("forwarding")) {
+			log.debug("SOS is telling Forwarding to run later.");
 			return true;
 		} else {
 			return false;
@@ -350,7 +351,11 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		 */
 		ofPacket.setInPort(OFPort.ANY);
 		List<OFAction> actions = new ArrayList<OFAction>();
-		actions.add(factory.actions().output(OFPort.LOCAL, 0xffFFffFF));
+		if (isSourceAgent) {
+			actions.add(factory.actions().output(OFPort.of(1), 0xffFFffFF));
+		} else {
+			actions.add(factory.actions().output(OFPort.LOCAL, 0xffFFffFF));
+		}
 		ofPacket.setActions(actions);
 
 		/* Put the UDP packet in the OF packet (encapsulate it as an OF packet) */
@@ -504,7 +509,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			log.debug("{}", l3.getProtocol());
 
 			if (l3.getProtocol().equals(IpProtocol.TCP)) {
-				log.debug("Got TCP Packet on port " + pi.getInPort() + " of switch " + sw.getId());
+				log.debug("Got TCP Packet on port " + (pi.getVersion().compareTo(OFVersion.OF_12) < 0 ? pi.getInPort().toString() : pi.getMatch().get(MatchField.IN_PORT).toString()) + " of switch " + sw.getId());
 				TCP l4 = (TCP) l3.getPayload();
 				/* If this source IP and source port (or destination IP and destination port)
 				 * have already been assigned a connection then we really shouldn't get to 
@@ -523,7 +528,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 					/* Process new TCP SOS session */
 
 					/* Create new Source Client */
-					SOSClient sourceClient = new SOSClient(l3.getSourceAddress(), l2.getSourceMACAddress(), pi.getInPort());
+					SOSClient sourceClient = new SOSClient(l3.getSourceAddress(), l2.getSourceMACAddress(), (pi.getVersion().compareTo(OFVersion.OF_12) < 0 ? pi.getInPort() : pi.getMatch().get(MatchField.IN_PORT)));
 					sourceClient.setAgent(SRC_AGENT); //TODO figure out a way to detect the closest agent
 
 					/* Create a new Source Physical Switch */
@@ -674,7 +679,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			actionList.add(factory.actions().setField(factory.oxms().tcpDst(AGENT_TCP_IN_PORT)));
 		}
 
-		actionList.add(factory.actions().output(OFPort.LOCAL, 0xffFFffFF));
+		actionList.add(factory.actions().output(OFPort.of(1), 0xffFFffFF));
 
 		flow.setBufferId(OFBufferId.NO_BUFFER);
 		flow.setOutPort(OFPort.ANY);
@@ -698,7 +703,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
 
-		match.setExact(MatchField.IN_PORT, OFPort.LOCAL);
+		match.setExact(MatchField.IN_PORT, OFPort.of(1));
 		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
 		match.setExact(MatchField.IPV4_DST, conn.getSrcClient().getIPAddr());
 		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
@@ -773,7 +778,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
 
-		match.setExact(MatchField.IN_PORT, OFPort.LOCAL);
+		match.setExact(MatchField.IN_PORT, OFPort.of(1));
 		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
 		match.setExact(MatchField.IPV4_DST, conn.getDstAgent().getIPAddr()); 
 		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
@@ -1050,7 +1055,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
 		// Don't care about the TCP port number
 
-		actionList.add(factory.actions().output(OFPort.LOCAL, 0xffFFffFF));
+		actionList.add(factory.actions().output(OFPort.of(1), 0xffFFffFF));
 
 		flow.setBufferId(OFBufferId.NO_BUFFER);
 		flow.setOutPort(OFPort.ANY);
