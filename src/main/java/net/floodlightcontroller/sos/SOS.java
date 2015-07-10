@@ -352,7 +352,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		ofPacket.setInPort(OFPort.ANY);
 		List<OFAction> actions = new ArrayList<OFAction>();
 		if (isSourceAgent) {
-			actions.add(factory.actions().output(OFPort.of(1), 0xffFFffFF));
+			actions.add(factory.actions().output(OFPort.LOCAL, 0xffFFffFF));
 		} else {
 			actions.add(factory.actions().output(OFPort.LOCAL, 0xffFFffFF));
 		}
@@ -679,7 +679,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			actionList.add(factory.actions().setField(factory.oxms().tcpDst(AGENT_TCP_IN_PORT)));
 		}
 
-		actionList.add(factory.actions().output(OFPort.of(1), 0xffFFffFF));
+		actionList.add(factory.actions().output(OFPort.LOCAL, 0xffFFffFF));
 
 		flow.setBufferId(OFBufferId.NO_BUFFER);
 		flow.setOutPort(OFPort.ANY);
@@ -703,7 +703,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
 
-		match.setExact(MatchField.IN_PORT, OFPort.of(1));
+		match.setExact(MatchField.IN_PORT, OFPort.LOCAL);
 		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
 		match.setExact(MatchField.IPV4_DST, conn.getSrcClient().getIPAddr());
 		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
@@ -778,7 +778,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
 
-		match.setExact(MatchField.IN_PORT, OFPort.of(1));
+		match.setExact(MatchField.IN_PORT, OFPort.LOCAL);
 		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
 		match.setExact(MatchField.IPV4_DST, conn.getDstAgent().getIPAddr()); 
 		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
@@ -1055,7 +1055,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
 		// Don't care about the TCP port number
 
-		actionList.add(factory.actions().output(OFPort.of(1), 0xffFFffFF));
+		actionList.add(factory.actions().output(OFPort.LOCAL, 0xffFFffFF));
 
 		flow.setBufferId(OFBufferId.NO_BUFFER);
 		flow.setOutPort(OFPort.ANY);
