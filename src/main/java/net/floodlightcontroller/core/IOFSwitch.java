@@ -34,10 +34,14 @@ import org.projectfloodlight.openflow.protocol.OFStatsReply;
 import org.projectfloodlight.openflow.protocol.OFStatsRequest;
 import org.projectfloodlight.openflow.types.DatapathId;
 import org.projectfloodlight.openflow.types.OFPort;
+import org.projectfloodlight.openflow.types.TableId;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
+
+import net.floodlightcontroller.core.internal.TableFeatures;
 import net.floodlightcontroller.core.web.serializers.IOFSwitchSerializer;
+
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 /**
  * An openflow switch connecting to the controller.  This interface offers
@@ -112,7 +116,13 @@ public interface IOFSwitch extends IOFMessageWriter {
 
     Set<OFCapabilities> getCapabilities();
 
-    short getTables();
+    /**
+     * Get the specific TableIds according to the ofp_table_features.
+     * Not all switches have sequential TableIds, so this will give the
+     * specific TableIds used by the switch.
+     * @return
+     */
+    Collection<TableId> getTables();
 
     /**
      * @return a copy of the description statistics for this switch
@@ -336,4 +346,21 @@ public interface IOFSwitch extends IOFMessageWriter {
      *         return a Future that immediately fails with a @link{SwitchDisconnectedException}.
      */
     <R extends OFMessage> ListenableFuture<R> writeRequest(OFRequest<R> request, LogicalOFMessageCategory category);
+    
+    /**
+     * Get the features of a particular switch table. The features are cached from
+     * the initial handshake, or, if applicable, from a more recent 
+     * OFTableFeaturesStatsRequest/Reply sent by a user module.
+     * 
+     * @param table, The table of which to get features.
+     * @return The table features or null if no features are known for the table requested.
+     */
+    public TableFeatures getTableFeatures(TableId table);
+
+    /**
+     * Get the number of tables as returned by the ofp_features_reply.
+     * @return
+     */
+	short getNumTables();
+    
 }

@@ -143,6 +143,7 @@ public class OFConnection implements IOFConnection, IOFConnectionBackend{
 
         DeliverableListenableFuture<R> future = new DeliverableListenableFuture<R>();
         xidDeliverableMap.put(request.getXid(), future);
+        listener.messageWritten(this, request);
         write(request);
         return future;
     }
@@ -403,7 +404,11 @@ public class OFConnection implements IOFConnection, IOFConnectionBackend{
             return false;
         }
 
+		@Override
+		public void messageWritten(IOFConnectionBackend connection, OFMessage m) {
+			// TODO Auto-generated method stub
+			
+		}
+
     }
-
-
 }
