@@ -61,7 +61,7 @@ public class Hub implements IFloodlightModule, IOFMessageListener {
 
     @Override
     public String getName() {
-        return Hub.class.getPackage().getName();
+        return "hub";
     }
 
     public Command receive(IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
@@ -115,7 +115,11 @@ public class Hub implements IFloodlightModule, IOFMessageListener {
 
     @Override
     public boolean isCallbackOrderingPrereq(OFType type, String name) {
-        return false;
+        if (type.equals(OFType.PACKET_IN) && name.equals("linkdiscovery")) {
+        	return true;
+        } else {
+        	return false;
+        }
     }
 
     @Override

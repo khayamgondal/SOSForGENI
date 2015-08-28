@@ -207,9 +207,9 @@ public class StaticFlowEntries {
 			switch (mf.id) {
 			case IN_PORT: // iterates over only exact/masked fields. No need to check for null entries.
 				if (match.supports(MatchField.IN_PORT) && match.isExact(MatchField.IN_PORT)) {
-					entry.put(StaticFlowEntryPusher.COLUMN_IN_PORT, match.get(MatchField.IN_PORT).toString());
+					entry.put(StaticFlowEntryPusher.COLUMN_IN_PORT, Integer.toString(match.get(MatchField.IN_PORT).getPortNumber()));
 				} else if (match.supportsMasked(MatchField.IN_PORT) && match.isPartiallyMasked(MatchField.IN_PORT)) {
-					entry.put(StaticFlowEntryPusher.COLUMN_IN_PORT, match.getMasked(MatchField.IN_PORT).toString());
+					entry.put(StaticFlowEntryPusher.COLUMN_IN_PORT, Integer.toString(match.getMasked(MatchField.IN_PORT).getValue().getPortNumber()));
 				} else {
 					log.error("Got match for {} but protocol {} does not support said match. Ignoring match.", 
 							StaticFlowEntryPusher.COLUMN_IN_PORT, match.getVersion().toString());

@@ -3,28 +3,29 @@ package net.floodlightcontroller.sos;
 import java.util.ArrayList;
 import java.util.UUID;
 
+import org.projectfloodlight.openflow.types.DatapathId;
 import org.projectfloodlight.openflow.types.TransportPort;
 
 public class SOSConnection {
 	private SOSClient SRC_CLIENT;
 	private SOSAgent SRC_AGENT;
 	private TransportPort SRC_PORT;
-	private SOSSwitch SRC_AGENT_SWITCH;
 	private SOSClient DST_CLIENT;
 	private SOSAgent DST_AGENT;
 	private TransportPort DST_PORT;
 	private TransportPort DST_AGENT_L4PORT;
-	private SOSSwitch DST_AGENT_SWITCH;
-	private SOSSwitch SRC_NTWK_SWITCH;
-	private SOSSwitch DST_NTWK_SWITCH;
+	private DatapathId SRC_AGENT_SWITCH;
+	private DatapathId DST_AGENT_SWITCH;
+	private DatapathId SRC_NTWK_SWITCH;
+	private DatapathId DST_NTWK_SWITCH;
 	private UUID TRANSFER_ID;
 	private int NUM_PARALLEL_SOCKETS;
 	private int QUEUE_CAPACITY;
 	private int BUFFER_SIZE;
 	private ArrayList<String> FLOW_NAMES;
 	
-	public SOSConnection(SOSClient srcC, SOSAgent srcA, TransportPort srcP, SOSSwitch srcS, 
-			SOSClient dstC, SOSAgent dstA, TransportPort dstP, SOSSwitch dstS, SOSSwitch srcNtwkS, SOSSwitch dstNtwkS, int numSockets, int queueCap, int bufSize) {
+	public SOSConnection(SOSClient srcC, SOSAgent srcA, TransportPort srcP, DatapathId srcS, 
+			SOSClient dstC, SOSAgent dstA, TransportPort dstP, DatapathId dstS, DatapathId srcNtwkS, DatapathId dstNtwkS, int numSockets, int queueCap, int bufSize) {
 		SRC_CLIENT = srcC;
 		SRC_AGENT = srcA;
 		SRC_PORT = srcP;
@@ -43,30 +44,6 @@ public class SOSConnection {
 		FLOW_NAMES = new ArrayList<String>();
 	}
 	
-	/**
-	 * Floodlight stores switch and L4 port numbers as shorts. In Java, there is no such thing
-	 * as an unsigned short. This means all port numbers greater than 32768 or 2^15 (for 2-byte
-	 * shorts) will appear as negative numbers. This poses a problem when printing the ports in
-	 * the debugger or converting them to strings (such as the SFP does). If you have a port
-	 * that ***might*** be larger than the largest possible number in a signed short (given by
-	 * Short.MAX_VALUE), use these methods to make sure the port value does not wrap around and
-	 * appear negative as a signed short. The SFP is patched to fix this issue. Use these functions
-	 * for local port operations that require the port number appear as positive.
-	 * 
-	 * @param port
-	 * @return
-	 */
-	public int portToInteger(short port) {
-		int temp = (int) port;
-    	if (temp < 0 ) {
-    		temp = Short.MAX_VALUE*2 + temp + 2;
-    	}
-    	return temp;
-	}
-	public String portToString(short port) {
-    	return Integer.toString(portToInteger(port));
-	}
-	
 	public TransportPort getDstAgentL4Port() {
 		return DST_AGENT_L4PORT;
 	}
@@ -74,16 +51,16 @@ public class SOSConnection {
 		DST_AGENT_L4PORT = l4port;
 	}
 	
-	public SOSSwitch getSrcAgentSwitch() {
+	public DatapathId getSrcAgentSwitch() {
 		return SRC_AGENT_SWITCH;
 	}
-	public SOSSwitch getDstAgentSwitch() {
+	public DatapathId getDstAgentSwitch() {
 		return DST_AGENT_SWITCH;
 	}
-	public SOSSwitch getSrcNtwkSwitch() {
+	public DatapathId getSrcNtwkSwitch() {
 		return SRC_NTWK_SWITCH;
 	}
-	public SOSSwitch getDstNtwkSwitch() {
+	public DatapathId getDstNtwkSwitch() {
 		return DST_NTWK_SWITCH;
 	}
 	
@@ -159,14 +136,14 @@ public class SOSConnection {
 					"|| Sockets: " + NUM_PARALLEL_SOCKETS + "\r\n" +
 					"Queue Capacity: " + QUEUE_CAPACITY + "\r\n" +
 					"Buffer Size: " + BUFFER_SIZE + "\r\n" +
-					"Source Agent Switch: " + SRC_AGENT_SWITCH.getSwitch().getId() + "\r\n" +
-					"Source Network Switch: " + SRC_NTWK_SWITCH.getSwitch().getId() + "\r\n" +
-					"Destination Agent Switch: " + DST_AGENT_SWITCH.getSwitch().getId() + "\r\n" +
-					"Destination Network Switch: " + DST_NTWK_SWITCH.getSwitch().getId() + "\r\n" +
-					"Source Agent: (" + SRC_AGENT.getIPAddr().toString() + ", " + SRC_AGENT.getSwitchPort().toString() + ")\r\n" +
-					"Destination Agent: (" + DST_AGENT.getIPAddr().toString() + ", " + DST_AGENT.getSwitchPort().toString() + ")\r\n" +
-					"Source Client: (" + SRC_CLIENT.getIPAddr().toString() + ", " + SRC_CLIENT.getSwitchPort().toString() + ")\r\n" +
-					"Destination Client: (" + DST_CLIENT.getIPAddr().toString() + ", " + DST_CLIENT.getSwitchPort().toString() + ")\r\n" +
+					"Source Agent Switch: " + SRC_AGENT_SWITCH + "\r\n" +
+					"Source Network Switch: " + SRC_NTWK_SWITCH + "\r\n" +
+					"Destination Agent Switch: " + DST_AGENT_SWITCH + "\r\n" +
+					"Destination Network Switch: " + DST_NTWK_SWITCH + "\r\n" +
+					"Source Agent: (" + SRC_AGENT.getIPAddr().toString() + ", " + SRC_AGENT.getAttachmentPoint().toString() + ")\r\n" +
+					"Destination Agent: (" + DST_AGENT.getIPAddr().toString() + ", " + DST_AGENT.getAttachmentPoint().toString() + ")\r\n" +
+					"Source Client: (" + SRC_CLIENT.getIPAddr().toString() + ", " + SRC_CLIENT.getAttachmentPoint().toString() + ")\r\n" +
+					"Destination Client: (" + DST_CLIENT.getIPAddr().toString() + ", " + DST_CLIENT.getAttachmentPoint().toString() + ")\r\n" +
 					"Source L4 Port: " + SRC_PORT.toString() + "\r\n" +
 					"Destination L4 Port: " + DST_PORT.toString() + "\r\n" +
 		    		"Destination Agent L4 Port: " + DST_AGENT_L4PORT.toString() + "\r\n";
