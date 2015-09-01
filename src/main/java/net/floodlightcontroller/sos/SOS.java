@@ -1,9 +1,10 @@
- package net.floodlightcontroller.sos;
+package net.floodlightcontroller.sos;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -20,11 +21,13 @@ import org.projectfloodlight.openflow.protocol.OFVersion;
 import org.projectfloodlight.openflow.types.DatapathId;
 import org.projectfloodlight.openflow.types.EthType;
 import org.projectfloodlight.openflow.types.IPv4Address;
+import org.projectfloodlight.openflow.types.IPv6Address;
 import org.projectfloodlight.openflow.types.IpProtocol;
 import org.projectfloodlight.openflow.types.MacAddress;
 import org.projectfloodlight.openflow.types.OFBufferId;
 import org.projectfloodlight.openflow.types.OFPort;
 import org.projectfloodlight.openflow.types.TransportPort;
+import org.projectfloodlight.openflow.types.U64;
 import org.projectfloodlight.openflow.types.VlanVid;
 import org.projectfloodlight.openflow.protocol.OFType;
 import org.projectfloodlight.openflow.protocol.action.OFAction;
@@ -44,6 +47,7 @@ import net.floodlightcontroller.core.module.IFloodlightModule;
 import net.floodlightcontroller.core.module.IFloodlightService;
 import net.floodlightcontroller.devicemanager.IDevice;
 import net.floodlightcontroller.devicemanager.IDeviceService;
+import net.floodlightcontroller.devicemanager.SwitchPort;
 import net.floodlightcontroller.devicemanager.internal.DeviceManagerImpl;
 import net.floodlightcontroller.packet.ARP;
 import net.floodlightcontroller.packet.Data;
@@ -53,6 +57,7 @@ import net.floodlightcontroller.packet.IPv4;
 import net.floodlightcontroller.packet.TCP;
 import net.floodlightcontroller.packet.UDP;
 import net.floodlightcontroller.routing.IRoutingService;
+import net.floodlightcontroller.routing.Route;
 import net.floodlightcontroller.staticflowentry.IStaticFlowEntryPusherService;
 import net.floodlightcontroller.topology.ITopologyService;
 
@@ -62,44 +67,25 @@ import net.floodlightcontroller.topology.ITopologyService;
  * 
  */
 public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightModule  {
-	protected static Logger log;
-	protected IFloodlightProviderService floodlightProvider;
-	protected IOFSwitchService switchService;
-	protected ITopologyService topologyService;
-	protected IRoutingService routingService;
-	protected IDeviceService deviceService;
-	protected IStaticFlowEntryPusherService sfp;
+	private static final Logger log = LoggerFactory.getLogger(SOS.class);
+	private static IFloodlightProviderService floodlightProvider;
+	private static IOFSwitchService switchService;
+	private static ITopologyService topologyService;
+	private static IRoutingService routingService;
+	private static IDeviceService deviceService;
+	private static IStaticFlowEntryPusherService sfp;
 
-	private static MacAddress CONTROLLER_MAC;
-	private static TransportPort AGENT_UDP_MSG_IN_PORT; // 9998
-	private static TransportPort AGENT_TCP_IN_PORT; // 9877
+	private static MacAddress controllerMac;
+	private static TransportPort agentControlPort; // 9998
+	private static TransportPort agentDataPort; // 9877
 
-	private static SOSAgent SRC_AGENT;
-	private static SOSAgent DST_AGENT;
+	private static SOSConnections sosConnections;
+	private static Set<SOSAgent> agents;
 
-	private static SOSClient SRC_CLIENT;
-	private static SOSClient DST_CLIENT;
-
-	private static SOSSwitch SRC_AGENT_SWITCH;
-	private static SOSSwitch DST_AGENT_SWITCH;
-
-	private static SOSConnections SOS_CONNECTIONS;
-	private static Set<DatapathId> AGENT_SWITCHES;
-
-	private static int BUFFER_SIZE;
-	private static int QUEUE_CAPACITY;
-	private static int PARALLEL_SOCKETS;
-	private static short FLOW_TIMEOUT;
-
-	private static IPv4Address SRC_AGENT_IP;
-	private static IPv4Address DST_AGENT_IP;
-
-	private static DatapathId SRC_AGENT_SWITCH_DPID;
-	private static DatapathId DST_AGENT_SWITCH_DPID;
-
-	public static final MacAddress BROADCAST_MAC = MacAddress.BROADCAST;
-	public static final IPv4Address BROADCAST_IP = IPv4Address.NO_MASK; /* all 1's */
-	public static final IPv4Address UNASSIGNED_IP = IPv4Address.FULL_MASK; /* all 0's */
+	private static int bufferSize;
+	private static int agentQueueCapacity;
+	private static int agentNumParallelSockets;
+	private static short flowTimeout;
 
 	@Override
 	public Collection<Class<? extends IFloodlightService>> getModuleDependencies() {
@@ -117,9 +103,8 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		topologyService = context.getServiceImpl(ITopologyService.class);
 		deviceService = context.getServiceImpl(IDeviceService.class);
 		sfp = context.getServiceImpl(IStaticFlowEntryPusherService.class);
-		log = LoggerFactory.getLogger(SOS.class);
-		
-		AGENT_SWITCHES = new HashSet<DatapathId>();
+
+		agents = new HashSet<SOSAgent>();
 	}
 
 	@Override
@@ -130,21 +115,15 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		// Read our config options
 		Map<String, String> configOptions = context.getConfigParams(this);
 		try {
-			CONTROLLER_MAC = MacAddress.of(configOptions.get("controller-mac"));
+			controllerMac = MacAddress.of(configOptions.get("controller-mac"));
 
-			BUFFER_SIZE = Integer.parseInt(configOptions.get("buffer-size"));
-			QUEUE_CAPACITY = Integer.parseInt(configOptions.get("queue-capacity"));
-			PARALLEL_SOCKETS = Integer.parseInt(configOptions.get("parallel-tcp-sockets"));
-			FLOW_TIMEOUT = Short.parseShort(configOptions.get("flow-timeout"));
+			bufferSize = Integer.parseInt(configOptions.get("buffer-size"));
+			agentQueueCapacity = Integer.parseInt(configOptions.get("queue-capacity"));
+			agentNumParallelSockets = Integer.parseInt(configOptions.get("parallel-tcp-sockets"));
+			flowTimeout = Short.parseShort(configOptions.get("flow-timeout"));
 
-			AGENT_UDP_MSG_IN_PORT = TransportPort.of(Integer.parseInt(configOptions.get("agent-msg-port")));
-			AGENT_TCP_IN_PORT = TransportPort.of(Integer.parseInt(configOptions.get("agent-tcp-port")));
-
-			SRC_AGENT_IP = IPv4Address.of(configOptions.get("src-agent-ip"));
-			DST_AGENT_IP = IPv4Address.of(configOptions.get("dst-agent-ip"));
-
-			SRC_AGENT_SWITCH_DPID = DatapathId.of(configOptions.get("src-agent-switch-dpid"));
-			DST_AGENT_SWITCH_DPID = DatapathId.of(configOptions.get("dst-agent-switch-dpid"));
+			agentControlPort = TransportPort.of(Integer.parseInt(configOptions.get("agent-msg-port")));
+			agentDataPort = TransportPort.of(Integer.parseInt(configOptions.get("agent-tcp-port")));
 
 		} catch(IllegalArgumentException ex) {
 			log.error("Incorrect SOS configuration options", ex);
@@ -154,13 +133,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			throw ex;
 		}
 
-		SOS_CONNECTIONS = new SOSConnections();
-
-		SRC_AGENT = new SOSAgent(SRC_AGENT_IP, AGENT_TCP_IN_PORT, AGENT_UDP_MSG_IN_PORT);
-		DST_AGENT = new SOSAgent(DST_AGENT_IP, AGENT_TCP_IN_PORT, AGENT_UDP_MSG_IN_PORT);
-
-		SRC_AGENT_SWITCH = new SOSSwitch();
-		DST_AGENT_SWITCH = new SOSSwitch();
+		sosConnections = new SOSConnections();
 	}
 
 	@Override
@@ -180,7 +153,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 
 	@Override
 	public boolean isCallbackOrderingPrereq(OFType type, String name) {
-		// Allow the CONTEXT_DST_DEVICE field to be populated by the DeviceManager. This makes our job easier :)
+		// Allow the CONTEXT_SRC/DST_DEVICE field to be populated by the DeviceManager. This makes our job easier :)
 		if (type == OFType.PACKET_IN && name.equalsIgnoreCase("devicemananger")) {
 			return true;
 		} else {
@@ -199,21 +172,23 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	}
 
 	/**
-	 * Send an OF packet with the UDP packet encapsulated inside. This packet is destined for
-	 * the agent. 
+	 * Send a UDP information packet to an agent. This informs the agent of the SOS
+	 * connection about to take place. For example, a client-side agent is informed of
+	 * the server-side agent to connect to, the number of parallel sockets to open up,
+	 * and so forth. A server-side agent is informed of the the number of parallel 
+	 * connections to establish server sockets, the server IP itself, and so forth.
 	 * 
 	 * @param conn, The associated SOSConnection for the UDP info packets.
 	 * @param isSourceAgent, Send to source agent (true); send to destination agent (false).
 	 */
-	public void sendInfoToAgent(FloodlightContext cntx, SOSConnection conn, boolean isSourceAgent) {
-		/* OF packet to send to the switches. The switches will be the switch
-		 * of the source agent and the switch of the destination agent
-		 */
+	private void sendInfoToAgent(FloodlightContext cntx, SOSConnection conn, boolean isClientSideAgent) {
 		OFFactory factory;
-		if (isSourceAgent) {
-			factory = conn.getSrcAgentSwitch().getSwitch().getOFFactory();
+		
+		/* Both use route last-hop, since the packets are destined for the agents */
+		if (isClientSideAgent) {
+			factory = switchService.getSwitch(conn.getClientSideRoute().getRouteLastHop().getNodeId()).getOFFactory();
 		} else {
-			factory = conn.getDstAgentSwitch().getSwitch().getOFFactory();
+			factory = switchService.getSwitch(conn.getServerSideRoute().getRouteLastHop().getNodeId()).getOFFactory();
 		}
 
 		OFPacketOut.Builder ofPacket = factory.buildPacketOut();
@@ -221,24 +196,25 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 
 		/* L2 of packet */
 		Ethernet l2 = new Ethernet();
-		l2.setSourceMACAddress(CONTROLLER_MAC);
-		l2.setDestinationMACAddress(isSourceAgent ? conn.getSrcAgent().getMACAddr() : conn.getDstAgent().getMACAddr());
+		l2.setSourceMACAddress(controllerMac);
+		l2.setDestinationMACAddress(isClientSideAgent ? conn.getClientSideAgent().getMACAddr() : conn.getServerSideAgent().getMACAddr());
 		l2.setEtherType(EthType.IPv4);
 
 		/* L3 of packet */
 		IPv4 l3 = new IPv4();
-		l3.setSourceAddress(isSourceAgent ? conn.getDstAgent().getIPAddr() : conn.getDstClient().getIPAddr());
-		l3.setDestinationAddress(isSourceAgent ? conn.getSrcAgent().getIPAddr() : conn.getDstAgent().getIPAddr());
+		l3.setSourceAddress(isClientSideAgent ? conn.getServerSideAgent().getIPAddr() : conn.getServer().getIPAddr());
+		l3.setDestinationAddress(isClientSideAgent ? conn.getClientSideAgent().getIPAddr() : conn.getServerSideAgent().getIPAddr());
 		l3.setProtocol(IpProtocol.UDP);
 		l3.setTtl((byte) 64);
 
 		/* L4 of packet */
 		UDP l4 = new UDP();
-		l4.setSourcePort(conn.getDstPort());
-		l4.setDestinationPort(isSourceAgent ? conn.getSrcAgent().getControlPort() : conn.getDstAgent().getControlPort());
+		l4.setSourcePort(conn.getServer().getTcpPort());
+		l4.setDestinationPort(isClientSideAgent ? conn.getClientSideAgent().getControlPort() : conn.getServerSideAgent().getControlPort());
 
 
-		/* Convert the string into IPacket. Data extends BasePacket, which is an abstract class
+		/* 
+		 * Convert the string into IPacket. Data extends BasePacket, which is an abstract class
 		 * that implements IPacket. The only class variable of Data is the byte[] 'data'. The 
 		 * deserialize() method of Data is the following:
 		 * 
@@ -255,7 +231,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		 */
 
 		String agentInfo = null;
-		if (isSourceAgent) {
+		if (isClientSideAgent) {
 			/*payload = "CLIENT " + str(transfer_id) + 
 					" " + ip_to_str(packet.next.srcip)  + 
 					" " + str(packet.next.next.srcport) + 
@@ -265,9 +241,9 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 					" " +str(MAX_QUEUE_SIZE) */
 			log.debug(conn.getTransferID().toString());
 			agentInfo = "CLIENT " + conn.getTransferID().toString() + 
-					" " + conn.getSrcClient().getIPAddr().toString() +
-					" " + conn.getSrcPort().toString() +
-					" " + conn.getDstAgent().getIPAddr().toString() +
+					" " + conn.getClient().getIPAddr().toString() +
+					" " + conn.getClient().getTcpPort().toString() +
+					" " + conn.getServerSideAgent().getIPAddr().toString() +
 					" " + Integer.toString(conn.getNumParallelSockets()) +
 					" " + Integer.toString(conn.getBufferSize()) +
 					" " + Integer.toString(conn.getQueueCapacity());
@@ -279,10 +255,12 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 				" " + str(BUFSIZE) + 
 				" " + str(MAX_QUEUE_SIZE) */
 			agentInfo = "AGENT " + conn.getTransferID().toString() + 
-					" " + conn.getDstClient().getIPAddr().toString() +
-					" " + conn.getDstPort().toString() +
-					/* I suppose the destination agent will learn the source agent IP
-					 * after it receives the first TCP packet (hopefully this is true)
+					" " + conn.getServer().getIPAddr().toString() +
+					" " + conn.getServer().getTcpPort().toString() +
+					/* 
+					 * The server-side agent will learn the client-side agent IP
+					 * after it receives the first TCP SYN packets from the
+					 * client-side agent.
 					 */
 					" " + Integer.toString(conn.getNumParallelSockets()) +
 					" " + Integer.toString(conn.getBufferSize()) +
@@ -294,15 +272,16 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		/* Construct the packet layer-by-layer */
 		l2.setPayload(l3.setPayload(l4.setPayload(payloadData.setData(agentInfo.getBytes()))));
 
-		/* Tell the switch what to do with the packet. This is specified as an OFAction.
+		/* 
+		 * Tell the switch what to do with the packet. This is specified as an OFAction.
 		 * i.e. Which port should it go out?
 		 */
 		ofPacket.setInPort(OFPort.ANY);
 		List<OFAction> actions = new ArrayList<OFAction>();
-		if (isSourceAgent) {
-			actions.add(factory.actions().output(OFPort.LOCAL, 0xffFFffFF));
+		if (isClientSideAgent) {
+			actions.add(factory.actions().output(conn.getClientSideRoute().getRouteLastHop().getPortId(), 0xffFFffFF));
 		} else {
-			actions.add(factory.actions().output(OFPort.LOCAL, 0xffFFffFF));
+			actions.add(factory.actions().output(conn.getServerSideRoute().getRouteLastHop().getPortId(), 0xffFFffFF));
 		}
 		ofPacket.setActions(actions);
 
@@ -310,131 +289,136 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		byte[] udpPacket = l2.serialize();
 		ofPacket.setData(udpPacket);
 
-		/* Send the OF packet to the agent switch.
+		/*
+		 * Send the OF packet to the agent switch.
 		 * The switch will look at the OpenFlow action and send the encapsulated
 		 * UDP packet out the port specified.
 		 */
-		if (isSourceAgent) {
-			conn.getSrcAgentSwitch().getSwitch().write(ofPacket.build());
+		if (isClientSideAgent) {
+			switchService.getSwitch(conn.getClientSideRoute().getRouteLastHop().getNodeId()).write(ofPacket.build());
 		} else {
-			conn.getDstAgentSwitch().getSwitch().write(ofPacket.build());
+			switchService.getSwitch(conn.getServerSideRoute().getRouteLastHop().getNodeId()).write(ofPacket.build());
 		}
 	}
+	
 	/**
 	 * Send an OF packet with the TCP "spark" packet (the packet that "sparked" the SOS session)
-	 * encapsulated inside. This packet is destined for the source agent. 
+	 * encapsulated inside. This packet is destined for the client-side agent. 
 	 * 
 	 * @param l2, the Ethernet packet received by the SOS module.
-	 * @param conn, The associated SOSConnection for the UDP info packets.
+	 * @param conn, The associated SOSConnection
 	 */
-	public void sendSrcSparkPacket(FloodlightContext cntx, Ethernet l2, SOSConnection conn) {
-		/* OF packet to send to the switches. The switches will be the switch
-		 * of the source agent and the switch of the destination agent
-		 */
-		OFFactory factory = conn.getSrcAgentSwitch().getSwitch().getOFFactory();
+	private void sendClientSideAgentSparkPacket(FloodlightContext cntx, Ethernet l2, SOSConnection conn) {
+		OFFactory factory = switchService.getSwitch(conn.getClientSideRoute().getRouteLastHop().getNodeId()).getOFFactory();
 
 		OFPacketOut.Builder ofPacket = factory.buildPacketOut();
 		ofPacket.setBufferId(OFBufferId.NO_BUFFER);
 
-		/* L2 of packet
-		 * Change the dst MAC to the agent
+		/* 
+		 * L2 of packet
+		 * Change the dst MAC to the client-side agent
 		 */
-		l2.setDestinationMACAddress(conn.getSrcAgent().getMACAddr());
+		l2.setDestinationMACAddress(conn.getClientSideAgent().getMACAddr());
 
-		/* L3 of packet 
-		 * Change the dst IP to the agent
+		/* 
+		 * L3 of packet 
+		 * Change the dst IP to the client-side agent
 		 */
 		IPv4 l3 = (IPv4) l2.getPayload();
-		l3.setDestinationAddress(conn.getSrcAgent().getIPAddr());
+		l3.setDestinationAddress(conn.getClientSideAgent().getIPAddr());
 
-		/* L4 of packet 
-		 * Change destination TCP port to the one the agent is listening to
+		/* 
+		 * L4 of packet 
+		 * Change destination TCP port to the one the agent is listening on
 		 */
 		TCP l4 = (TCP) l3.getPayload();
-		l4.setDestinationPort(conn.getSrcAgent().getDataPort());
+		l4.setDestinationPort(conn.getClientSideAgent().getDataPort());
 
-		/* Reconstruct the packet layer-by-layer 
-		 * Only the L2 MAC and L3 IP were changed.
-		 * L4 info is preserved in l3 payload.
+		/* 
+		 * Reconstruct the packet layer-by-layer 
 		 */
 		l3.setPayload(l4);
 		l2.setPayload(l3);
 
-		/* Tell the switch what to do with the packet. This is specified as an OFAction.
+		/* 
+		 * Tell the switch what to do with the packet. This is specified as an OFAction.
 		 * i.e. Which port should it go out?
 		 */
 		ofPacket.setInPort(OFPort.ANY);
 		List<OFAction> actions = new ArrayList<OFAction>();
-		/* Output to the source agent */
-		actions.add(factory.actions().output(OFPort.LOCAL, 0xffFFffFF));
+		/* Output to the client-side agent -- this is the last hop of the route */
+		actions.add(factory.actions().output(conn.getClientSideRoute().getRouteLastHop().getPortId(), 0xffFFffFF));
 		ofPacket.setActions(actions);
 
 		/* Put the TCP spark packet in the OF packet (encapsulate it as an OF packet) */
 		ofPacket.setData(l2.serialize());
 
-		/* Send the OF packet to the agent switch.
+		/* 
+		 * Send the OF packet to the agent switch.
 		 * The switch will look at the OpenFlow action and send the encapsulated
-		 * UDP packet out the port specified.
+		 * TCP packet out the port specified.
 		 */
-		conn.getSrcAgentSwitch().getSwitch().write(ofPacket.build());
+		switchService.getSwitch(conn.getClientSideRoute().getRouteLastHop().getNodeId()).write(ofPacket.build());
 	}
+	
 	/**
 	 * Send an OF packet with the TCP "spark" packet (the packet that "sparked" the SOS session)
-	 * encapsulated inside. This packet is destined for the source agent. 
+	 * encapsulated inside. This packet is destined for the server from the server-side agent. 
 	 * 
 	 * @param l2, the Ethernet packet received by the SOS module.
-	 * @param conn, The associated SOSConnection for the UDP info packets.
+	 * @param conn, The associated SOSConnection
 	 */
-	public void sendDstSparkPacket(FloodlightContext cntx, Ethernet l2, SOSConnection conn) {
-		/* OF packet to send to the switches. The switches will be the switch
-		 * of the source agent and the switch of the destination agent
-		 */
-		OFFactory factory = conn.getDstAgentSwitch().getSwitch().getOFFactory();
+	private void sendServerSparkPacket(FloodlightContext cntx, Ethernet l2, SOSConnection conn) {
+		OFFactory factory = switchService.getSwitch(conn.getServerSideRoute().getRouteFirstHop().getNodeId()).getOFFactory();
 
 		OFPacketOut.Builder ofPacket = factory.buildPacketOut();
 		ofPacket.setBufferId(OFBufferId.NO_BUFFER);
 
-		/* L2 of packet
-		 * Change the dst MAC to the agent
+		/* 
+		 * L2 of packet
+		 * Change the dst MAC to the server
 		 */
-		l2.setSourceMACAddress(conn.getSrcClient().getMACAddr());
+		l2.setSourceMACAddress(conn.getClient().getMACAddr());
 
-		/* L3 of packet 
-		 * Change the dst IP to the agent
+		/*
+		 * L3 of packet 
+		 * Change the dst IP to the server
 		 */
 		IPv4 l3 = (IPv4) l2.getPayload();
-		l3.setSourceAddress(conn.getSrcClient().getIPAddr());
+		l3.setSourceAddress(conn.getClient().getIPAddr());
 
-		/* L4 of packet 
-		 * Change destination TCP port to the one the agent is listening to
+		/*
+		 * L4 of packet 
+		 * Change source TCP port to the one the agent has opened
 		 */
 		TCP l4 = (TCP) l3.getPayload();
-		l4.setSourcePort(conn.getDstAgentL4Port());
+		l4.setSourcePort(conn.getServerSideAgentTcpPort());
 
-		/* Reconstruct the packet layer-by-layer 
-		 * Only the L2 MAC and L3 IP were changed.
-		 * L4 info is preserved in l3 payload.
+		/* 
+		 * Reconstruct the packet layer-by-layer 
 		 */
 		l3.setPayload(l4);
 		l2.setPayload(l3);
 
-		/* Tell the switch what to do with the packet. This is specified as an OFAction.
+		/* 
+		 * Tell the switch what to do with the packet. This is specified as an OFAction.
 		 * i.e. Which port should it go out?
 		 */
 		ofPacket.setInPort(OFPort.ANY);
 		List<OFAction> actions = new ArrayList<OFAction>();
-		/* Output to the source agent */
-		actions.add(factory.actions().output(OFPort.LOCAL, 0xffFFffFF));
+		/* Output to the port facing the server -- route first hop is the server's AP */
+		actions.add(factory.actions().output(conn.getServerSideRoute().getRouteFirstHop().getPortId(), 0xffFFffFF));
 		ofPacket.setActions(actions);
 
 		/* Put the TCP spark packet in the OF packet (encapsulate it as an OF packet) */
 		ofPacket.setData(l2.serialize());
 
-		/* Send the OF packet to the agent switch.
+		/* 
+		 * Send the OF packet to the switch.
 		 * The switch will look at the OpenFlow action and send the encapsulated
-		 * UDP packet out the port specified.
+		 * TCP packet out the port specified.
 		 */
-		conn.getDstAgentSwitch().getSwitch().write(ofPacket.build());
+		switchService.getSwitch(conn.getServerSideRoute().getRouteFirstHop().getNodeId()).write(ofPacket.build());
 	}
 
 	/**
@@ -451,9 +435,9 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 
 		if (l2.getEtherType() == EthType.IPv4) {
 			log.debug("Got IPv4 Packet");
-			
+
 			IPv4 l3 = (IPv4) l2.getPayload();
-			
+
 			log.debug("Got IpProtocol {}", l3.getProtocol());
 
 			if (l3.getProtocol().equals(IpProtocol.TCP)) {
@@ -468,16 +452,16 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 				/* Lookup the source IP address to see if it belongs to a client with a connection */
 				log.debug("(" + l4.getSourcePort().toString() + ", " + l4.getDestinationPort().toString() + ")");
 
-				SOSPacketStatus packetStatus = SOS_CONNECTIONS.getSOSPacketStatus(
+				SOSPacketStatus packetStatus = sosConnections.getSOSPacketStatus(
 						l3.getSourceAddress(), l3.getDestinationAddress(),
 						l4.getSourcePort(), l4.getDestinationPort()); 
 
 				if (packetStatus == SOSPacketStatus.INACTIVE_REGISTERED){
 					/* Process new TCP SOS session */
-					
+
 					IDevice srcDevice = IDeviceService.fcStore.get(cntx, IDeviceService.CONTEXT_SRC_DEVICE);
 					IDevice dstDevice = IDeviceService.fcStore.get(cntx, IDeviceService.CONTEXT_DST_DEVICE);
-					
+
 					if (srcDevice == null) {
 						log.error("Source device was not known. Is DeviceManager running before SOS as it should? Report SOS bug.");
 						return Command.STOP;
@@ -492,44 +476,34 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 						log.debug("Destination device is {}", dstDevice);
 					}
 
-					/* Create new Source Client */
-					SOSClient sourceClient = new SOSClient(l3.getSourceAddress(), l2.getSourceMACAddress(), SRC_AGENT, srcDevice.getAttachmentPoints());
-					//sourceClient.setAgent(SRC_AGENT); TODO figure out a way to detect the closest agent
+					/* Init Source Agent/Client */
+					SOSClient client = new SOSClient(l3.getSourceAddress(), l4.getSourcePort(), l2.getSourceMACAddress());
+					SOSRoute clientRoute = routeToNeighborhoodAgent(client, srcDevice.getAttachmentPoints(), IPv4Address.NONE);
+					if (clientRoute == null) {
+						return Command.STOP;
+					}
 
-					/* Destination switch will not be known at this point.
-					 * Fortunately, if we let the device manager go before
-					 * our module, the destination device will be set to
-					 * the context using private/protected DM methods.
-					 * 
-					 * TODO: We should send e.g. an ARP request to the
-					 * destination IP if the device was not found.
-					 *
-					IDevice destinationDevice = (IDevice) cntx.getStorage().get(DeviceManagerImpl.CONTEXT_DST_DEVICE);
-					long destinationSwitch = destinationDevice.
-
-
-					if (destinationDevice == null) {
-						log.debug("The DeviceManager did not know the destination device. We should handle this...");
-					} else {
-
-
-
-					}*/
-
-					/* Create new Destination Client */
-					SOSClient destinationClient = new SOSClient(l3.getDestinationAddress(), l2.getDestinationMACAddress(), DST_CLIENT_PORT); //TODO get dest port from device mgr
-					destinationClient.setAgent(DST_AGENT); //TODO figure out a way to detect the closest agent
-
-					/* Agents should already be created and known */
+					/* Init Agent/Server */
+					SOSServer server = new SOSServer(l3.getDestinationAddress(), l4.getDestinationPort(), l2.getDestinationMACAddress());
+					SOSRoute serverRoute = routeToNeighborhoodAgent(server, dstDevice.getAttachmentPoints(), 
+							clientRoute.getRoute() != null ? clientRoute.getDstDevice().getIPAddr() : IPv4Address.NONE);
+					if (serverRoute == null) {
+						return Command.STOP;
+					}
+					
+					SOSRoute interAgentRoute = routeBetweenAgents((SOSAgent) clientRoute.getDstDevice(), (SOSAgent) clientRoute.getDstDevice());
 
 					/* Establish connection */
-					//TODO automatically select source/destination agent/agent-switch and dst-ntwk-switch
-					SOSConnection newSOSconnection = SOS_CONNECTIONS.addConnection(sourceClient, SRC_AGENT, l4.getSourcePort(), sw.getId(), SRC_AGENT_SWITCH,
-							destinationClient, DST_AGENT, l4.getDestinationPort(), DST_NTWK_SWITCH, DST_AGENT_SWITCH, PARALLEL_SOCKETS, QUEUE_CAPACITY, BUFFER_SIZE);
+					SOSConnection newSOSconnection = sosConnections.addConnection(clientRoute, interAgentRoute, serverRoute, 
+							agentNumParallelSockets, agentQueueCapacity, bufferSize);
 					log.debug("Starting new SOS session: \r\n" + newSOSconnection.toString());
 
 					/* Push flows and add flow names to connection (for removal upon termination) */
 					log.debug("Pushing source-side and inter-agent SOS flows");
+					pushRoute(newSOSconnection.getClientSideRoute());
+					pushRoute(newSOSconnection.getInterAgentRoute());
+					
+					/*
 					pushSOSFlow_1(newSOSconnection);                                 
 					pushSOSFlow_2(newSOSconnection);
 					pushSOSFlow_3(newSOSconnection);
@@ -544,39 +518,44 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 					pushSOSFlow_9a(newSOSconnection);
 					pushSOSFlow_9b(newSOSconnection);
 					pushSOSFlow_10(newSOSconnection);
+					*/
 
 					/* Send the initial TCP packet that triggered this module to the home agent */
-					log.debug("Sending source-side spark packet to source agent");
-					sendSrcSparkPacket(cntx, l2, newSOSconnection);
+					log.debug("Sending client-side spark packet to client-side agent");
+					sendClientSideAgentSparkPacket(cntx, l2, newSOSconnection);
 
 					/* Send UDP messages to the home and foreign agents */
-					log.debug("Sending UDP information packets to source and destination agents");
+					log.debug("Sending UDP information packets to client-side and server-side agents");
 					sendInfoToAgent(cntx, newSOSconnection, true); // home
 					sendInfoToAgent(cntx, newSOSconnection, false); // foreign
 
-				} else if (packetStatus == SOSPacketStatus.ACTIVE_DST_AGENT_TO_DST_CLIENT) {					
-					SOSConnection conn = SOS_CONNECTIONS.getConnectionFromIP(l3.getDestinationAddress(), l4.getDestinationPort());
+				} else if (packetStatus == SOSPacketStatus.ACTIVE_SERVER_SIDE_AGENT_TO_SERVER) {					
+					SOSConnection conn = sosConnections.getConnectionFromIP(l3.getDestinationAddress(), l4.getDestinationPort());
 
 					if (conn == null) {
-						log.error("Should have found an SOSConnection in need of a dst-agent L4 port!");
+						log.error("Should have found an SOSConnection in need of a server-side agent TCP port!");
 					} else {
-						conn.setDstAgentL4Port(l4.getSourcePort());
+						conn.setServerSideAgentTcpPort(l4.getSourcePort());
 						log.debug("Finalizing SOS session: \r\n" + conn.toString());
 
-						log.debug("Pushing destination-side SOS flows");
+						log.debug("Pushing server-side SOS flows");
+						pushRoute(conn.getServerSideRoute());
+						
+						/*
 						pushSOSFlow_11(conn);
 						pushSOSFlow_12(conn);
 						pushSOSFlow_13(conn);
 						pushSOSFlow_14(conn);
+						*/
 
-						log.debug("Sending destination-side spark packet to destination client");
-						sendDstSparkPacket(cntx, l2, conn);
+						log.debug("Sending server-side spark packet to server");
+						sendServerSparkPacket(cntx, l2, conn);
 					}
 				} else if (packetStatus == SOSPacketStatus.INACTIVE_UNREGISTERED) {
 					log.warn("Received an unregistered TCP packet. Register the connection to have it operated on by SOS.");
 					return Command.CONTINUE; /* Short circuit default return for unregistered -- let Forwarding/Hub handle it */
 				} else {
-					log.error("Received a TCP packet w/status {} that belongs to an ongoing SOS session. Check accuracy of flows!", packetStatus);
+					log.error("Received a TCP packet w/status {} that belongs to an ongoing SOS session. Check accuracy of flows/Report SOS bug", packetStatus);
 				}
 
 				/* We don't want other modules messing with our SOS TCP session (namely Forwarding) */
@@ -586,25 +565,145 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		} // END IF IPv4 packet
 		return Command.CONTINUE;
 	} // END of receive(pkt)
-	
+
+	/**
+	 * Lookup an agent based on the client's current location. Shortest path
+	 * routing is used to determine the closest agent. The route is returned
+	 * inclusive of the SOS agent.
+	 * 
+	 * Lookup can be done for either client or server of a TCP connection. 
+	 * Supply the IP address of a previously determined agent to select a 
+	 * different agent in the event both clients result in the same agent 
+	 * being selected.
+	 * 
+	 * @param dev, either client or server
+	 * @param agentToAvoid, optional, use IPv4Address.NONE if N/A
+	 * @return
+	 */
+	private SOSRoute routeToNeighborhoodAgent(SOSDevice dev, SwitchPort[] devAps, IPv4Address agentToAvoid) {
+		Route shortestPath = null;
+		SOSAgent closestAgent = null;
+
+		/* First, make sure client has a valid attachment point */
+		if (devAps.length == 0) {
+			log.warn("Client/Server {} was found in the device manager but does not have a valid attachment point. Report SOS bug.");
+			return null;
+		}
+
+		for (SOSAgent agent : agents) {
+			/* Skip agent earmarked for other client */
+			if (agent.getIPAddr().equals(agentToAvoid)) {
+				log.debug("Skipping earmarked agent {}", agent);
+			} else {
+				/* Find where the agent is attached. Only *ONE* device should be returned here, ever. Assume 0th device is the correct one. */
+				Iterator<? extends IDevice> i = deviceService.queryDevices(MacAddress.NONE, null, agent.getIPAddr(), IPv6Address.NONE, DatapathId.NONE, OFPort.ZERO);
+				if (i.hasNext()) {
+					IDevice d = i.next();
+					/* The 0th attachment point should always be the real location unless we've experienced an agent migration (which should be done in a maintenance period). */
+					SwitchPort[] agentAps = d.getAttachmentPoints();
+					if (agentAps.length > 0) {
+						Route r = routingService.getRoute(devAps[0].getSwitchDPID(), agentAps[0].getSwitchDPID(), U64.ZERO);
+						if (shortestPath == null) {
+							log.debug("Found initial agent {} w/route {}", agent, r);
+							shortestPath = r;
+							closestAgent = agent;
+						} else if (shortestPath.getRouteCount() > r.getRouteCount()) {
+							if (log.isDebugEnabled()) { /* Use isDebugEnabled() when we have to create a new object for the log */
+								log.debug("Found new agent {} w/shorter route. Old route {}; new route {}", new Object[] { agent, shortestPath, r});
+							}
+							shortestPath = r;
+							closestAgent = agent;
+						} else {
+							if (log.isDebugEnabled()) { 
+								log.debug("Retaining current agent {} w/shortest route. Kept route {}; Longer contender {}", new Object[] { agent, shortestPath, r }); 
+							}
+						}
+					} else {
+						log.debug("Agent {} was located but did not have any valid attachment points", agent);
+					}
+
+				} else {
+					log.debug("Query for agents with IP address of {} resulted in no devices. Trying other agents.", agent);
+				}
+			}
+		}
+
+		/* If we get here, we should have iterated through all agents for the closest */
+		if (closestAgent == null) {
+			log.error("Could not find a path from client/server {} to any agent {}. Report SOS bug.", dev, agents);
+			return null;
+		}
+
+		return new SOSRoute(dev, closestAgent, shortestPath);
+	}
+
+	/**
+	 * Find the shortest route (by hop-count) between two SOS agents. 
+	 * Do not push flows for the route.
+	 * @param src
+	 * @param dst
+	 * @return
+	 */
+	private SOSRoute routeBetweenAgents(SOSAgent src, SOSAgent dst) {
+
+		/* Find where the agent is attached. Only *ONE* device should be returned here, ever. Assume 0th device is the correct one. */
+		Iterator<? extends IDevice> si = deviceService.queryDevices(MacAddress.NONE, null, src.getIPAddr(), IPv6Address.NONE, DatapathId.NONE, OFPort.ZERO);
+		Iterator<? extends IDevice> di = deviceService.queryDevices(MacAddress.NONE, null, dst.getIPAddr(), IPv6Address.NONE, DatapathId.NONE, OFPort.ZERO);
+
+		if (si.hasNext() && di.hasNext()) {
+			IDevice sd = si.next();
+			IDevice dd = di.next();
+			
+			/* The 0th attachment point should always be the real location unless we've experienced an agent migration (which should be done in a maintenance period). */
+			SwitchPort[] sAps = sd.getAttachmentPoints();
+			SwitchPort[] dAps = dd.getAttachmentPoints();
+
+			if (sAps.length > 0 && dAps.length > 0) {
+				Route r = routingService.getRoute(sAps[0].getSwitchDPID(), dAps[0].getSwitchDPID(), U64.ZERO);
+				if (r == null) {
+					log.error("Could not find route between {} at AP {} and {} at AP {}", new Object[] { src, sAps, dst, dAps});
+				} else {
+					return new SOSRoute(src, dst, r);
+				}
+			} else {
+				log.error("Agent had no APs. {} at AP {} and {} at AP {}", new Object[] { src, sAps, dst, dAps});
+			}
+
+		} else {
+			log.debug("Query for agents resulted in no devices. Source iterator: {}; Destination iterator {}", si, di);
+		}
+		return null;
+	}
+
+	/**
+	 * Try to force-learn a device that the device manager does not know
+	 * about already. The ARP reply (we hope for) will trigger learning
+	 * the new device, and the next TCP SYN we receive after that will
+	 * result in a successful device lookup in the device manager.
+	 * @param dstIp
+	 * @param srcIp
+	 * @param srcMac
+	 * @param vlan
+	 * @param sw
+	 */
 	private void arpForDevice(IPv4Address dstIp, IPv4Address srcIp, MacAddress srcMac, VlanVid vlan, IOFSwitch sw) {
 		IPacket arpRequest = new Ethernet()
-        .setSourceMACAddress(srcMac)
-        .setDestinationMACAddress(MacAddress.BROADCAST)
-        .setEtherType(EthType.ARP)
-        .setVlanID(vlan.getVlan())
-        .setPayload(
-            new ARP()
-            .setHardwareType(ARP.HW_TYPE_ETHERNET)
-            .setProtocolType(ARP.PROTO_TYPE_IP)
-            .setHardwareAddressLength((byte) 6)
-            .setProtocolAddressLength((byte) 4)
-            .setOpCode(ARP.OP_REQUEST)
-            .setSenderHardwareAddress(srcMac)
-            .setSenderProtocolAddress(srcIp)
-            .setTargetHardwareAddress(MacAddress.NONE)
-            .setTargetProtocolAddress(dstIp));
-		
+		.setSourceMACAddress(srcMac)
+		.setDestinationMACAddress(MacAddress.BROADCAST)
+		.setEtherType(EthType.ARP)
+		.setVlanID(vlan.getVlan())
+		.setPayload(
+				new ARP()
+				.setHardwareType(ARP.HW_TYPE_ETHERNET)
+				.setProtocolType(ARP.PROTO_TYPE_IP)
+				.setHardwareAddressLength((byte) 6)
+				.setProtocolAddressLength((byte) 4)
+				.setOpCode(ARP.OP_REQUEST)
+				.setSenderHardwareAddress(srcMac)
+				.setSenderProtocolAddress(srcIp)
+				.setTargetHardwareAddress(MacAddress.NONE)
+				.setTargetProtocolAddress(dstIp));
+
 		OFPacketOut po = sw.getOFFactory().buildPacketOut()
 				.setActions(Collections.singletonList((OFAction) sw.getOFFactory().actions().output(OFPort.FLOOD, 0xffFFffFF)))
 				.setBufferId(OFBufferId.NO_BUFFER)
@@ -614,12 +713,24 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		sw.write(po);
 	}
 
+	private void pushRoute(SOSRoute route) {
+		if (route.getRouteType() == SOSRouteType.CLIENT_2_AGENT) {
+			
+		} else if (route.getRouteType() == SOSRouteType.AGENT_2_AGENT) {
+			
+		} else if (route.getRouteType() == SOSRouteType.SERVER_2_AGENT) {
+			
+		} else {
+			log.error("Received invalid SOSRouteType of {}", route.getRouteType());
+		}
+	}
+	
 	public void pushSOSFlow_1(SOSConnection conn) {
-		OFFactory factory = conn.getSrcNtwkSwitch().getSwitch().getOFFactory();
+		OFFactory factory = switchService.getSwitch(conn.getSrcNtwkSwitch()).getOFFactory();
 		OFFlowAdd.Builder flow = factory.buildFlowAdd();
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
-		
+
 		match.setExact(MatchField.IN_PORT, conn.getSrcClient().getSwitchPort());
 		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
 		match.setExact(MatchField.IPV4_SRC, conn.getSrcClient().getIPAddr());
@@ -639,18 +750,18 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		flow.setActions(actionList);
 		flow.setMatch(match.build());
 		flow.setPriority(32767);
-		flow.setIdleTimeout(FLOW_TIMEOUT);
+		flow.setIdleTimeout(flowTimeout);
 
 		String flowName = "sos-1-" + conn.getSrcClient().getIPAddr().toString() + 
 				"-" + conn.getSrcPort().toString() + 
 				"-to-" + conn.getDstClient().getIPAddr().toString() +
 				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), conn.getSrcNtwkSwitch().getSwitch().getId());
+		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getSrcNtwkSwitch()).getId());
 		conn.addFlow(flowName);
-		log.info("added flow on SW " + conn.getSrcNtwkSwitch().getSwitch().getId() + flowName);
+		log.info("added flow on SW " + switchService.getSwitch(conn.getSrcNtwkSwitch()).getId() + flowName);
 	}
 	public void pushSOSFlow_2(SOSConnection conn) {
-		OFFactory factory = conn.getSrcAgentSwitch().getSwitch().getOFFactory();
+		OFFactory factory = switchService.getSwitch(conn.getSrcAgentSwitch()).getOFFactory();
 		OFFlowAdd.Builder flow = factory.buildFlowAdd();
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
@@ -664,11 +775,11 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		if (factory.getVersion().compareTo(OFVersion.OF_12) < 0) {
 			actionList.add(factory.actions().setDlDst(conn.getSrcAgent().getMACAddr()));
 			actionList.add(factory.actions().setNwDst(conn.getSrcAgent().getIPAddr()));
-			actionList.add(factory.actions().setTpDst(AGENT_TCP_IN_PORT));
+			actionList.add(factory.actions().setTpDst(agentDataPort));
 		} else {
 			actionList.add(factory.actions().setField(factory.oxms().ethDst(conn.getSrcAgent().getMACAddr())));
 			actionList.add(factory.actions().setField(factory.oxms().ipv4Dst(conn.getSrcAgent().getIPAddr())));
-			actionList.add(factory.actions().setField(factory.oxms().tcpDst(AGENT_TCP_IN_PORT)));
+			actionList.add(factory.actions().setField(factory.oxms().tcpDst(agentDataPort)));
 		}
 
 		actionList.add(factory.actions().output(OFPort.LOCAL, 0xffFFffFF));
@@ -678,19 +789,19 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		flow.setActions(actionList);
 		flow.setMatch(match.build());
 		flow.setPriority(32767);
-		flow.setIdleTimeout(FLOW_TIMEOUT);
+		flow.setIdleTimeout(flowTimeout);
 
 		String flowName = "sos-2-" + conn.getSrcClient().getIPAddr().toString() + 
 				"-" + conn.getSrcPort().toString() + 
 				"-to-" + conn.getDstClient().getIPAddr().toString() +
 				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), conn.getSrcAgentSwitch().getSwitch().getId());
+		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getSrcAgentSwitch()).getId());
 		conn.addFlow(flowName);
-		log.info("added flow on SW " + conn.getSrcAgentSwitch().getSwitch().getId() + flowName);
+		log.info("added flow on SW " + switchService.getSwitch(conn.getSrcAgentSwitch()).getId() + flowName);
 	}
 
 	public void pushSOSFlow_3(SOSConnection conn) {
-		OFFactory factory = conn.getSrcAgentSwitch().getSwitch().getOFFactory();
+		OFFactory factory = switchService.getSwitch(conn.getSrcAgentSwitch()).getOFFactory();
 		OFFlowAdd.Builder flow = factory.buildFlowAdd();
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
@@ -718,19 +829,19 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		flow.setActions(actionList);
 		flow.setMatch(match.build());
 		flow.setPriority(32767);
-		flow.setIdleTimeout(FLOW_TIMEOUT);
+		flow.setIdleTimeout(flowTimeout);
 
 		String flowName = "sos-3-" + conn.getSrcClient().getIPAddr().toString() + 
 				"-" + conn.getSrcPort().toString() + 
 				"-to-" + conn.getDstClient().getIPAddr().toString() +
 				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), conn.getSrcAgentSwitch().getSwitch().getId());
+		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getSrcAgentSwitch()).getId());
 		conn.addFlow(flowName);
-		log.info("added flow on SW " + conn.getSrcAgentSwitch().getSwitch().getId() + flowName);
+		log.info("added flow on SW " + switchService.getSwitch(conn.getSrcAgentSwitch()).getId() + flowName);
 	}
 
 	public void pushSOSFlow_4(SOSConnection conn) {
-		OFFactory factory = conn.getSrcNtwkSwitch().getSwitch().getOFFactory();
+		OFFactory factory = switchService.getSwitch(conn.getSrcNtwkSwitch()).getOFFactory();
 		OFFlowAdd.Builder flow = factory.buildFlowAdd();
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
@@ -753,19 +864,19 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		flow.setActions(actionList);
 		flow.setMatch(match.build());
 		flow.setPriority(32767);
-		flow.setIdleTimeout(FLOW_TIMEOUT);
+		flow.setIdleTimeout(flowTimeout);
 
 		String flowName = "sos-4-" + conn.getSrcClient().getIPAddr().toString() + 
 				"-" + conn.getSrcPort().toString() + 
 				"-to-" + conn.getDstClient().getIPAddr().toString() +
 				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), conn.getSrcNtwkSwitch().getSwitch().getId());
+		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getSrcNtwkSwitch()).getId());
 		conn.addFlow(flowName);
-		log.info("added flow on SW " + conn.getSrcNtwkSwitch().getSwitch().getId() + flowName);
+		log.info("added flow on SW " + switchService.getSwitch(conn.getSrcNtwkSwitch()).getId() + flowName);
 	}
 
 	public void pushSOSFlow_5(SOSConnection conn) {
-		OFFactory factory = conn.getSrcAgentSwitch().getSwitch().getOFFactory();
+		OFFactory factory = switchService.getSwitch(conn.getSrcAgentSwitch()).getOFFactory();
 		OFFlowAdd.Builder flow = factory.buildFlowAdd();
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
@@ -783,19 +894,19 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		flow.setActions(actionList);
 		flow.setMatch(match.build());
 		flow.setPriority(32767);
-		flow.setIdleTimeout(FLOW_TIMEOUT);
+		flow.setIdleTimeout(flowTimeout);
 
 		String flowName = "sos-5-" + conn.getSrcClient().getIPAddr().toString() + 
 				"-" + conn.getSrcPort().toString() + 
 				"-to-" + conn.getDstClient().getIPAddr().toString() +
 				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), conn.getSrcAgentSwitch().getSwitch().getId());
+		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getSrcAgentSwitch()).getId());
 		conn.addFlow(flowName);
-		log.info("added flow on SW " + conn.getSrcAgentSwitch().getSwitch().getId() + flowName);
+		log.info("added flow on SW " + switchService.getSwitch(conn.getSrcAgentSwitch()).getId() + flowName);
 	}
 
 	public void pushSOSFlow_6(SOSConnection conn) {
-		OFFactory factory = conn.getSrcNtwkSwitch().getSwitch().getOFFactory();
+		OFFactory factory = switchService.getSwitch(conn.getSrcNtwkSwitch()).getOFFactory();
 		OFFlowAdd.Builder flow = factory.buildFlowAdd();
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
@@ -813,19 +924,19 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		flow.setActions(actionList);
 		flow.setMatch(match.build());
 		flow.setPriority(32767);
-		flow.setIdleTimeout(FLOW_TIMEOUT);
+		flow.setIdleTimeout(flowTimeout);
 
 		String flowName = "sos-6-" + conn.getSrcClient().getIPAddr().toString() + 
 				"-" + conn.getSrcPort().toString() + 
 				"-to-" + conn.getDstClient().getIPAddr().toString() +
 				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), conn.getSrcNtwkSwitch().getSwitch().getId());
+		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getSrcNtwkSwitch()).getId());
 		conn.addFlow(flowName);
-		log.info("added flow on SW " + conn.getSrcNtwkSwitch().getSwitch().getId() + flowName);
+		log.info("added flow on SW " + switchService.getSwitch(conn.getSrcNtwkSwitch()).getId() + flowName);
 	}
 
 	public void pushSOSFlow_6a(SOSConnection conn) {
-		OFFactory factory = conn.getSrcNtwkSwitch().getSwitch().getOFFactory();
+		OFFactory factory = switchService.getSwitch(conn.getSrcNtwkSwitch()).getOFFactory();
 		OFFlowAdd.Builder flow = factory.buildFlowAdd();
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
@@ -843,19 +954,19 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		flow.setActions(actionList);
 		flow.setMatch(match.build());
 		flow.setPriority(32767);
-		flow.setIdleTimeout(FLOW_TIMEOUT);
+		flow.setIdleTimeout(flowTimeout);
 
 		String flowName = "sos-6a-" + conn.getSrcClient().getIPAddr().toString() + 
 				"-" + conn.getSrcPort().toString() + 
 				"-to-" + conn.getDstClient().getIPAddr().toString() +
 				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), conn.getSrcNtwkSwitch().getSwitch().getId());
+		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getSrcNtwkSwitch()).getId());
 		conn.addFlow(flowName);
-		log.info("added flow on SW " + conn.getSrcNtwkSwitch().getSwitch().getId() + flowName);
+		log.info("added flow on SW " + switchService.getSwitch(conn.getSrcNtwkSwitch()).getId() + flowName);
 	}
 
 	public void pushSOSFlow_6b(SOSConnection conn) {
-		OFFactory factory = conn.getDstNtwkSwitch().getSwitch().getOFFactory();
+		OFFactory factory = switchService.getSwitch(conn.getDstNtwkSwitch()).getOFFactory();
 		OFFlowAdd.Builder flow = factory.buildFlowAdd();
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
@@ -873,19 +984,19 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		flow.setActions(actionList);
 		flow.setMatch(match.build());
 		flow.setPriority(32767);
-		flow.setIdleTimeout(FLOW_TIMEOUT);
+		flow.setIdleTimeout(flowTimeout);
 
 		String flowName = "sos-6b-" + conn.getSrcClient().getIPAddr().toString() + 
 				"-" + conn.getSrcPort().toString() + 
 				"-to-" + conn.getDstClient().getIPAddr().toString() +
 				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), conn.getDstNtwkSwitch().getSwitch().getId());
+		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getDstNtwkSwitch()).getId());
 		conn.addFlow(flowName);
-		log.info("added flow on SW " + conn.getDstNtwkSwitch().getSwitch().getId() + flowName);
+		log.info("added flow on SW " + switchService.getSwitch(conn.getDstNtwkSwitch()).getId() + flowName);
 	}
 
 	public void pushSOSFlow_7(SOSConnection conn) {
-		OFFactory factory = conn.getDstAgentSwitch().getSwitch().getOFFactory();
+		OFFactory factory = switchService.getSwitch(conn.getDstAgentSwitch()).getOFFactory();
 		OFFlowAdd.Builder flow = factory.buildFlowAdd();
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
@@ -903,19 +1014,19 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		flow.setActions(actionList);
 		flow.setMatch(match.build());
 		flow.setPriority(32767);
-		flow.setIdleTimeout(FLOW_TIMEOUT);
+		flow.setIdleTimeout(flowTimeout);
 
 		String flowName = "sos-7-" + conn.getSrcClient().getIPAddr().toString() + 
 				"-" + conn.getSrcPort().toString() + 
 				"-to-" + conn.getDstClient().getIPAddr().toString() +
 				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), conn.getDstAgentSwitch().getSwitch().getId());
+		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getDstAgentSwitch()).getId());
 		conn.addFlow(flowName);
-		log.info("added flow on SW " + conn.getDstAgentSwitch().getSwitch().getId() + flowName);
+		log.info("added flow on SW " + switchService.getSwitch(conn.getDstAgentSwitch()).getId() + flowName);
 	}
 
 	public void pushSOSFlow_8(SOSConnection conn) {
-		OFFactory factory = conn.getDstAgentSwitch().getSwitch().getOFFactory();
+		OFFactory factory = switchService.getSwitch(conn.getDstAgentSwitch()).getOFFactory();
 		OFFlowAdd.Builder flow = factory.buildFlowAdd();
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
@@ -933,19 +1044,19 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		flow.setActions(actionList);
 		flow.setMatch(match.build());
 		flow.setPriority(32767);
-		flow.setIdleTimeout(FLOW_TIMEOUT);
+		flow.setIdleTimeout(flowTimeout);
 
 		String flowName = "sos-8-" + conn.getSrcClient().getIPAddr().toString() + 
 				"-" + conn.getSrcPort().toString() + 
 				"-to-" + conn.getDstClient().getIPAddr().toString() +
 				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), conn.getDstAgentSwitch().getSwitch().getId());
+		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getDstAgentSwitch()).getId());
 		conn.addFlow(flowName);
-		log.info("added flow on SW " + conn.getDstAgentSwitch().getSwitch().getId() + flowName);
+		log.info("added flow on SW " + switchService.getSwitch(conn.getDstAgentSwitch()).getId() + flowName);
 	} 
 
 	public void pushSOSFlow_9(SOSConnection conn) {
-		OFFactory factory = conn.getDstNtwkSwitch().getSwitch().getOFFactory();
+		OFFactory factory = switchService.getSwitch(conn.getDstNtwkSwitch()).getOFFactory();
 		OFFlowAdd.Builder flow = factory.buildFlowAdd();
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
@@ -963,19 +1074,19 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		flow.setActions(actionList);
 		flow.setMatch(match.build());
 		flow.setPriority(32767);
-		flow.setIdleTimeout(FLOW_TIMEOUT);
+		flow.setIdleTimeout(flowTimeout);
 
 		String flowName = "sos-d9-" + conn.getSrcClient().getIPAddr().toString() + 
 				"-" + conn.getSrcPort().toString() + 
 				"-to-" + conn.getDstClient().getIPAddr().toString() +
 				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), conn.getDstNtwkSwitch().getSwitch().getId());
+		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getDstNtwkSwitch()).getId());
 		conn.addFlow(flowName);
-		log.info("added flow on SW " + conn.getDstNtwkSwitch().getSwitch().getId() + flowName);
+		log.info("added flow on SW " + switchService.getSwitch(conn.getDstNtwkSwitch()).getId() + flowName);
 	}
 
 	public void pushSOSFlow_9a(SOSConnection conn) {
-		OFFactory factory = conn.getDstNtwkSwitch().getSwitch().getOFFactory();
+		OFFactory factory = switchService.getSwitch(conn.getDstNtwkSwitch()).getOFFactory();
 		OFFlowAdd.Builder flow = factory.buildFlowAdd();
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
@@ -993,19 +1104,19 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		flow.setActions(actionList);
 		flow.setMatch(match.build());
 		flow.setPriority(32767);
-		flow.setIdleTimeout(FLOW_TIMEOUT);
+		flow.setIdleTimeout(flowTimeout);
 
 		String flowName = "sos-9a-" + conn.getSrcClient().getIPAddr().toString() + 
 				"-" + conn.getSrcPort().toString() + 
 				"-to-" + conn.getDstClient().getIPAddr().toString() +
 				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), conn.getDstNtwkSwitch().getSwitch().getId());
+		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getDstNtwkSwitch()).getId());
 		conn.addFlow(flowName);
-		log.info("added flow on SW " + conn.getDstNtwkSwitch().getSwitch().getId() + flowName);
+		log.info("added flow on SW " + switchService.getSwitch(conn.getDstNtwkSwitch()).getId() + flowName);
 	}
 
 	public void pushSOSFlow_9b(SOSConnection conn) {
-		OFFactory factory = conn.getSrcNtwkSwitch().getSwitch().getOFFactory();
+		OFFactory factory = switchService.getSwitch(conn.getSrcNtwkSwitch()).getOFFactory();
 		OFFlowAdd.Builder flow = factory.buildFlowAdd();
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
@@ -1023,20 +1134,20 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		flow.setActions(actionList);
 		flow.setMatch(match.build());
 		flow.setPriority(32767);
-		flow.setIdleTimeout(FLOW_TIMEOUT);
+		flow.setIdleTimeout(flowTimeout);
 
 		String flowName = "sos-9b-" + conn.getSrcClient().getIPAddr().toString() + 
 				"-" + conn.getSrcPort().toString() + 
 				"-to-" + conn.getDstClient().getIPAddr().toString() +
 				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), conn.getSrcNtwkSwitch().getSwitch().getId());
+		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getSrcNtwkSwitch()).getId());
 		conn.addFlow(flowName);
-		log.info("added flow on SW " + conn.getSrcNtwkSwitch().getSwitch().getId() + flowName);
+		log.info("added flow on SW " + switchService.getSwitch(conn.getSrcNtwkSwitch()).getId() + flowName);
 	}
 
 
 	public void pushSOSFlow_10(SOSConnection conn) {
-		OFFactory factory = conn.getSrcAgentSwitch().getSwitch().getOFFactory();
+		OFFactory factory = switchService.getSwitch(conn.getSrcAgentSwitch()).getOFFactory();
 		OFFlowAdd.Builder flow = factory.buildFlowAdd();
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
@@ -1054,19 +1165,19 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		flow.setActions(actionList);
 		flow.setMatch(match.build());
 		flow.setPriority(32767);
-		flow.setIdleTimeout(FLOW_TIMEOUT);
+		flow.setIdleTimeout(flowTimeout);
 
 		String flowName = "sos-10-" + conn.getSrcClient().getIPAddr().toString() + 
 				"-" + conn.getSrcPort().toString() + 
 				"-to-" + conn.getDstClient().getIPAddr().toString() +
 				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), conn.getSrcAgentSwitch().getSwitch().getId());
+		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getSrcAgentSwitch()).getId());
 		conn.addFlow(flowName);
-		log.info("added flow on SW " + conn.getSrcAgentSwitch().getSwitch().getId() + flowName);
+		log.info("added flow on SW " + switchService.getSwitch(conn.getSrcAgentSwitch()).getId() + flowName);
 	} 
 
 	public void pushSOSFlow_11(SOSConnection conn) {
-		OFFactory factory = conn.getDstAgentSwitch().getSwitch().getOFFactory();
+		OFFactory factory = switchService.getSwitch(conn.getDstAgentSwitch()).getOFFactory();
 		OFFlowAdd.Builder flow = factory.buildFlowAdd();
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
@@ -1094,19 +1205,19 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		flow.setActions(actionList);
 		flow.setMatch(match.build());
 		flow.setPriority(32767);
-		flow.setIdleTimeout(FLOW_TIMEOUT);
+		flow.setIdleTimeout(flowTimeout);
 
 		String flowName = "sos-11-" + conn.getSrcClient().getIPAddr().toString() + 
 				"-" + conn.getSrcPort().toString() + 
 				"-to-" + conn.getDstClient().getIPAddr().toString() +
 				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), conn.getDstAgentSwitch().getSwitch().getId());
+		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getDstAgentSwitch()).getId());
 		conn.addFlow(flowName);
-		log.info("added flow on SW " + conn.getDstAgentSwitch().getSwitch().getId() + flowName);
+		log.info("added flow on SW " + switchService.getSwitch(conn.getDstAgentSwitch()).getId() + flowName);
 	}
 
 	public void pushSOSFlow_12(SOSConnection conn) {
-		OFFactory factory = conn.getDstNtwkSwitch().getSwitch().getOFFactory();
+		OFFactory factory = switchService.getSwitch(conn.getDstNtwkSwitch()).getOFFactory();
 		OFFlowAdd.Builder flow = factory.buildFlowAdd();
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
@@ -1129,19 +1240,19 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		flow.setActions(actionList);
 		flow.setMatch(match.build());
 		flow.setPriority(32767);
-		flow.setIdleTimeout(FLOW_TIMEOUT);
+		flow.setIdleTimeout(flowTimeout);
 
 		String flowName = "sos-12-" + conn.getSrcClient().getIPAddr().toString() + 
 				"-" + conn.getSrcPort().toString() + 
 				"-to-" + conn.getDstClient().getIPAddr().toString() +
 				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), conn.getDstNtwkSwitch().getSwitch().getId());
+		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getDstNtwkSwitch()).getId());
 		conn.addFlow(flowName);
-		log.info("added flow on SW " + conn.getDstNtwkSwitch().getSwitch().getId() + flowName);
+		log.info("added flow on SW " + switchService.getSwitch(conn.getDstNtwkSwitch()).getId() + flowName);
 	}
 
 	public void pushSOSFlow_13(SOSConnection conn) {
-		OFFactory factory = conn.getDstNtwkSwitch().getSwitch().getOFFactory();
+		OFFactory factory = switchService.getSwitch(conn.getDstNtwkSwitch()).getOFFactory();
 		OFFlowAdd.Builder flow = factory.buildFlowAdd();
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
@@ -1164,19 +1275,19 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		flow.setActions(actionList);
 		flow.setMatch(match.build());
 		flow.setPriority(32767);
-		flow.setIdleTimeout(FLOW_TIMEOUT);
+		flow.setIdleTimeout(flowTimeout);
 
 		String flowName = "sos-13-" + conn.getSrcClient().getIPAddr().toString() + 
 				"-" + conn.getSrcPort().toString() + 
 				"-to-" + conn.getDstClient().getIPAddr().toString() +
 				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), conn.getDstNtwkSwitch().getSwitch().getId());
+		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getDstNtwkSwitch()).getId());
 		conn.addFlow(flowName);
-		log.info("added flow on SW " + conn.getDstNtwkSwitch().getSwitch().getId() + flowName);
+		log.info("added flow on SW " + switchService.getSwitch(conn.getDstNtwkSwitch()).getId() + flowName);
 	}
 
 	public void pushSOSFlow_14(SOSConnection conn) {
-		OFFactory factory = conn.getDstAgentSwitch().getSwitch().getOFFactory();
+		OFFactory factory = switchService.getSwitch(conn.getDstAgentSwitch()).getOFFactory();
 		OFFlowAdd.Builder flow = factory.buildFlowAdd();
 		Match.Builder match = factory.buildMatch();
 		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
@@ -1204,15 +1315,15 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		flow.setActions(actionList);
 		flow.setMatch(match.build());
 		flow.setPriority(32767);
-		flow.setIdleTimeout(FLOW_TIMEOUT);
+		flow.setIdleTimeout(flowTimeout);
 
 		String flowName = "sos-14-" + conn.getSrcClient().getIPAddr().toString() + 
 				"-" + conn.getSrcPort().toString() + 
 				"-to-" + conn.getDstClient().getIPAddr().toString() +
 				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), conn.getDstAgentSwitch().getSwitch().getId());
+		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getDstAgentSwitch()).getId());
 		conn.addFlow(flowName);
-		log.info("added flow on SW " + conn.getDstAgentSwitch().getSwitch().getId() + flowName);
+		log.info("added flow on SW " + switchService.getSwitch(conn.getDstAgentSwitch()).getId() + flowName);
 	}	
 
 

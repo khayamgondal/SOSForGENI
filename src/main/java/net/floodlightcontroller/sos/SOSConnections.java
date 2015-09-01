@@ -2,7 +2,6 @@ package net.floodlightcontroller.sos;
 
 import java.util.ArrayList;
 
-import org.projectfloodlight.openflow.types.DatapathId;
 import org.projectfloodlight.openflow.types.IPv4Address;
 import org.projectfloodlight.openflow.types.OFPort;
 import org.projectfloodlight.openflow.types.TransportPort;
@@ -17,15 +16,39 @@ public class SOSConnections  {
 		}
 	}
 	
-	public SOSConnection addConnection(SOSClient srcC, SOSAgent srcA, TransportPort srcP, DatapathId srcNtwkS, DatapathId srcAgentS,
-			SOSClient dstC, SOSAgent dstA, TransportPort dstP, DatapathId dstNtwkS, DatapathId dstAgentS, int numSockets, int queueCap, int bufSize) {
-		CONNECTIONS.add(new SOSConnection(srcC, srcA, srcP, srcAgentS, 
-				dstC, dstA, dstP, dstAgentS, srcNtwkS, dstNtwkS, numSockets, queueCap, bufSize)); 
-		return getConnectionFromIP(srcC.getIPAddr(), srcP);
+	/**
+	 * Add a new SOS connection. Should only be invoked when handling the
+	 * initial TCP packet from the client to the server.
+	 * @param clientToAgent
+	 * @param interAgent
+	 * @param serverToAgent
+	 * @param clientPort
+	 * @param serverPort
+	 * @param numSockets
+	 * @param queueCapacity
+	 * @param bufferSize
+	 * @return
+	 */
+	public SOSConnection addConnection(SOSRoute clientToAgent, SOSRoute interAgent,
+			SOSRoute serverToAgent, int numSockets, 
+			int queueCapacity, int bufferSize) {
+		CONNECTIONS.add(new SOSConnection(clientToAgent, interAgent,
+				serverToAgent, numSockets,
+				queueCapacity, bufferSize)); 
+		return getConnectionFromIP(clientToAgent.getSrcDevice().getIPAddr(), ((SOSClient) clientToAgent.getSrcDevice()).getTcpPort());
 	}
+	
+	/**
+	 * Remove a terminated connection based on the server or client
+	 * IP address and TCP port
+	 * @param ip
+	 * @param port
+	 * @return
+	 */
 	public boolean removeConnection(IPv4Address ip, OFPort port) {
 		for (SOSConnection conn : CONNECTIONS) {
-			if (conn.getSrcClient().getIPAddr().equals(ip) && conn.getSrcPort().equals(port)) {
+			if (conn.getClient().getIPAddr().equals(ip) && conn.getClient().getTcpPort().equals(port) ||
+					conn.getServer().getIPAddr().equals(ip) && conn.getServer().getTcpPort().equals(port)) {
 				CONNECTIONS.remove(conn);
 				return true;
 			}
@@ -33,51 +56,66 @@ public class SOSConnections  {
 		return false;
 	}
 	
+	/**
+	 * Lookup an ongoing connection based on the server or client
+	 * IP address and TCP port
+	 * @param ip
+	 * @param port
+	 * @return
+	 */
 	public SOSConnection getConnectionFromIP(IPv4Address ip, TransportPort port) {
 		for (SOSConnection conn : CONNECTIONS) {
-			if (conn.getSrcClient().getIPAddr().equals(ip) && conn.getSrcPort().equals(port)) {
+			if (conn.getClient().getIPAddr().equals(ip) && conn.getClient().getTcpPort().equals(port)) {
 				return conn;
-			} else if (conn.getDstClient().getIPAddr().equals(ip) && conn.getDstPort().equals(port)) {
+			} else if (conn.getServer().getIPAddr().equals(ip) && conn.getServer().getTcpPort().equals(port)) {
 				return conn;
 			}
 		}
 		return null;
 	}
 	
+	/**
+	 * Based on the src/dst IP addresses and TCP port numbers of
+	 * a packet, try to find out where in an SOS connection it
+	 * belongs.  
+	 * @param srcIP
+	 * @param dstIP
+	 * @param srcPort
+	 * @param dstPort
+	 * @return
+	 */
 	public SOSPacketStatus getSOSPacketStatus(IPv4Address srcIP, IPv4Address dstIP, TransportPort srcPort, TransportPort dstPort) {
 		for (SOSConnection conn : CONNECTIONS) {
-			if (conn.getSrcClient().getIPAddr().equals(srcIP) && conn.getDstPort().equals(dstPort) && /* don't know the source transport port in conn */
-					conn.getDstClient().getIPAddr().equals(dstIP)) {
+			if (conn.getClient().getIPAddr().equals(srcIP) && conn.getServer().getTcpPort().equals(dstPort) && /* don't know the source transport port in conn */
+					conn.getServer().getIPAddr().equals(dstIP)) {
 				
 				return SOSPacketStatus.INACTIVE_REGISTERED;
 				
-			} else if (conn.getSrcClient().getIPAddr().equals(srcIP) && conn.getSrcPort().equals(srcPort) &&
-					conn.getSrcAgent().getIPAddr().equals(dstIP) ) {
+			} else if (conn.getClient().getIPAddr().equals(srcIP) && conn.getClient().getTcpPort().equals(srcPort) ) {
 				
-				return SOSPacketStatus.ACTIVE_SRC_CLIENT_TO_SRC_AGENT;
+				return SOSPacketStatus.ACTIVE_CLIENT_TO_CLIENT_SIDE_AGENT;
 				
-			} else if (conn.getDstClient().getIPAddr().equals(srcIP) && conn.getDstPort().equals(srcPort) &&
-					conn.getSrcClient().getIPAddr().equals(dstIP)) {
+			} else if (conn.getServer().getIPAddr().equals(srcIP) && conn.getServer().getTcpPort().equals(srcPort)) {
 				
-				return SOSPacketStatus.ACTIVE_DST_CLIENT_TO_DST_AGENT;
+				return SOSPacketStatus.ACTIVE_SERVER_TO_SERVER_SIDE_AGENT;
 				
-			} else if (conn.getDstClient().getIPAddr().equals(dstIP) && conn.getDstPort().equals(dstPort) &&
-					conn.getDstAgent().getIPAddr().equals(srcIP)) {
+			} else if (conn.getServer().getIPAddr().equals(dstIP) && conn.getServer().getTcpPort().equals(dstPort) &&
+					conn.getServerSideAgent().getIPAddr().equals(srcIP)) {
 				
-				return SOSPacketStatus.ACTIVE_DST_AGENT_TO_DST_CLIENT;
+				return SOSPacketStatus.ACTIVE_SERVER_SIDE_AGENT_TO_SERVER;
 				
-			} else if (conn.getSrcClient().getIPAddr().equals(dstIP) && conn.getSrcPort().equals(dstPort) && 
-					conn.getSrcAgent().getIPAddr().equals(srcIP)) {
+			} else if (conn.getClient().getIPAddr().equals(dstIP) && conn.getClient().getTcpPort().equals(dstPort) && 
+					conn.getClientSideAgent().getIPAddr().equals(srcIP)) {
 				
-				return SOSPacketStatus.ACTIVE_SRC_AGENT_TO_SRC_CLIENT;
+				return SOSPacketStatus.ACTIVE_CLIENT_SIDE_AGENT_TO_CLIENT;
 				
-			} else if (conn.getSrcAgent().getIPAddr().equals(srcIP) && conn.getDstAgent().getIPAddr().equals(dstIP)) {
+			} else if (conn.getClientSideAgent().getIPAddr().equals(srcIP) && conn.getServerSideAgent().getIPAddr().equals(dstIP)) {
 				
-				return SOSPacketStatus.ACTIVE_SRC_AGENT_TO_DST_AGENT;
+				return SOSPacketStatus.ACTIVE_CLIENT_SIDE_AGENT_TO_SERVER_SIDE_AGENT;
 				
-			} else if (conn.getDstAgent().getIPAddr().equals(srcIP) && conn.getSrcAgent().getIPAddr().equals(dstIP)) {
+			} else if (conn.getServerSideAgent().getIPAddr().equals(srcIP) && conn.getClientSideAgent().getIPAddr().equals(dstIP)) {
 				
-				return SOSPacketStatus.ACTIVE_DST_AGENT_TO_SRC_AGENT;
+				return SOSPacketStatus.ACTIVE_SERVER_SIDE_AGENT_TO_CLIENT_SIDE_AGENT;
 			}
 		}
 		return SOSPacketStatus.INACTIVE_UNREGISTERED;

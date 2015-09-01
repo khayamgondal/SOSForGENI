@@ -5,16 +5,16 @@ import org.projectfloodlight.openflow.types.IPv4Address;
 import org.projectfloodlight.openflow.types.MacAddress;
 import org.projectfloodlight.openflow.types.TransportPort;
 
-public class SOSClient extends SOSDevice {
+public class SOSServer extends SOSDevice {
 	private TransportPort sock;
 	
-	public SOSClient(IPv4Address ip, TransportPort p) {
-		super(SOSDeviceType.CLIENT, ip);
+	public SOSServer(IPv4Address ip, TransportPort p) {
+		super(SOSDeviceType.SERVER, ip);
 		this.sock = p;
 	}
 	
-	public SOSClient(IPv4Address ip, TransportPort p, MacAddress mac) {
-		super(SOSDeviceType.CLIENT, ip, mac);
+	public SOSServer(IPv4Address ip, TransportPort p, MacAddress mac) {
+		super(SOSDeviceType.SERVER, ip, mac);
 		this.sock = p;
 	}
 	
@@ -24,7 +24,7 @@ public class SOSClient extends SOSDevice {
 	
 	@Override
 	public String toString() {
-		return "SOSClient [ " + super.toString()  + " sock=" + sock.toString() + "]";
+		return "SOSServer [ " + super.toString()  + " sock=" + sock.toString() + "]";
 	}
 	
 	@Override
@@ -43,7 +43,7 @@ public class SOSClient extends SOSDevice {
 			return false;
 		if (getClass() != obj.getClass())
 			return false;
-		SOSClient other = (SOSClient) obj;
+		SOSServer other = (SOSServer) obj;
 		if (sock == null) {
 			if (other.sock != null)
 				return false;

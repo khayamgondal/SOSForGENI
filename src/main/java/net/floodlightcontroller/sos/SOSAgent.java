@@ -1,41 +1,21 @@
 package net.floodlightcontroller.sos;
 
-import net.floodlightcontroller.devicemanager.SwitchPort;
-
 import org.projectfloodlight.openflow.types.IPv4Address;
-import org.projectfloodlight.openflow.types.MacAddress;
 import org.projectfloodlight.openflow.types.TransportPort;
 
-public class SOSAgent {
-	private IPv4Address ip_addr;
-	private MacAddress mac_addr;
+public class SOSAgent extends SOSDevice {
 	private TransportPort data_port;
 	private TransportPort control_port;
-	private SwitchPort[] ap;
 	
 	public SOSAgent() {
-		ip_addr = IPv4Address.NONE;
-		mac_addr = MacAddress.NONE;
+		super(SOSDeviceType.AGENT);
 		data_port = TransportPort.NONE;
 		control_port = TransportPort.NONE;
-		ap = null;
 	}
 	public SOSAgent(IPv4Address ip, TransportPort data, TransportPort control) {
-		ip_addr = ip;
-		mac_addr = MacAddress.NONE; /* MAC will be learned via DeviceManager */
+		super(SOSDeviceType.AGENT, ip);
 		data_port = data;
 		control_port = control;
-	}
-	
-	public IPv4Address getIPAddr() {
-		return ip_addr;
-	}
-	
-	public void setMACAddr(MacAddress mac) {
-		mac_addr = mac;
-	}
-	public MacAddress getMACAddr() {
-		return mac_addr;
 	}
 	
 	public TransportPort getDataPort() {
@@ -46,10 +26,42 @@ public class SOSAgent {
 		return control_port;
 	}
 	
-	public void setAttachmentPoint(SwitchPort[] ap) {
-		this.ap = ap;
+	@Override
+	public String toString() {
+		return "SOSAgent [ " + super.toString() + " data_port=" + data_port + ", control_port="
+				+ control_port + "]";
 	}
-	public SwitchPort[] getAttachmentPoint() {
-		return ap;
+	
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = super.hashCode();
+		result = prime * result
+				+ ((control_port == null) ? 0 : control_port.hashCode());
+		result = prime * result
+				+ ((data_port == null) ? 0 : data_port.hashCode());
+		return result;
+	}
+	
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (!super.equals(obj))
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		SOSAgent other = (SOSAgent) obj;
+		if (control_port == null) {
+			if (other.control_port != null)
+				return false;
+		} else if (!control_port.equals(other.control_port))
+			return false;
+		if (data_port == null) {
+			if (other.data_port != null)
+				return false;
+		} else if (!data_port.equals(other.data_port))
+			return false;
+		return true;
 	}
 }
