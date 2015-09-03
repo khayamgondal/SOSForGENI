@@ -68,12 +68,12 @@ import net.floodlightcontroller.topology.ITopologyService;
  */
 public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightModule  {
 	private static final Logger log = LoggerFactory.getLogger(SOS.class);
-	private static IFloodlightProviderService floodlightProvider;
-	private static IOFSwitchService switchService;
+	protected static IFloodlightProviderService floodlightProvider;
+	protected static IOFSwitchService switchService;
 	private static ITopologyService topologyService;
 	private static IRoutingService routingService;
 	private static IDeviceService deviceService;
-	private static IStaticFlowEntryPusherService sfp;
+	protected static IStaticFlowEntryPusherService sfp;
 
 	private static MacAddress controllerMac;
 	private static TransportPort agentControlPort; // 9998
@@ -713,11 +713,26 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		sw.write(po);
 	}
 
+	/**
+	 * Push flows required for the route provided. If the route is only a single
+	 * hop, we assume the single switch is capable of performing all necessary
+	 * L2, L3, and L4 header rewrites. More importantly, if the route is more
+	 * than two hops, we assume the first hop will perform the redirection of
+	 * TCP packets to/from the agent and rewrite L2 headers, while the last hop 
+	 * will rewrite the L3 and L4 headers. This algorithm is chosen to support
+	 * a common configuration where OVS is used as the last hop right before
+	 * an agent to supplement the lack of higher layer header rewrite support
+	 * in prior-hop physical OpenFlow switches.
+	 * 
+	 * TODO use table features (OF1.3) to determine what each switch can do.
+	 * 
+	 * @param route
+	 */
 	private void pushRoute(SOSRoute route) {
 		if (route.getRouteType() == SOSRouteType.CLIENT_2_AGENT) {
 			
 		} else if (route.getRouteType() == SOSRouteType.AGENT_2_AGENT) {
-			
+			ISOSRoutingStrategy rs = new 
 		} else if (route.getRouteType() == SOSRouteType.SERVER_2_AGENT) {
 			
 		} else {

@@ -31,10 +31,12 @@ public class SOSConnections  {
 	 */
 	public SOSConnection addConnection(SOSRoute clientToAgent, SOSRoute interAgent,
 			SOSRoute serverToAgent, int numSockets, 
-			int queueCapacity, int bufferSize) {
+			int queueCapacity, int bufferSize,
+			int flowTimeout) {
 		CONNECTIONS.add(new SOSConnection(clientToAgent, interAgent,
 				serverToAgent, numSockets,
-				queueCapacity, bufferSize)); 
+				queueCapacity, bufferSize,
+				flowTimeout)); 
 		return getConnectionFromIP(clientToAgent.getSrcDevice().getIPAddr(), ((SOSClient) clientToAgent.getSrcDevice()).getTcpPort());
 	}
 	

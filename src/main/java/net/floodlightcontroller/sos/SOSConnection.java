@@ -15,19 +15,31 @@ public class SOSConnection {
 	private int numParallelSockets;
 	private int queueCapacity;
 	private int bufferSize;
+	private int flowTimeout;
 	private Set<String> flowNames;
 	
 	public SOSConnection(SOSRoute clientToAgent, SOSRoute interAgent,
 			SOSRoute serverToAgent, int numSockets, 
-			int queueCapacity, int bufferSize) {
+			int queueCapacity, int bufferSize,
+			int flowTimeout) {
+		if (clientToAgent.getRouteType() != SOSRouteType.CLIENT_2_AGENT) {
+			throw new IllegalArgumentException("SOSRoute clientToAgent must be of type client-to-agent");
+		}
 		this.clientToAgent = clientToAgent;
+		if (agentToAgent.getRouteType() != SOSRouteType.AGENT_2_AGENT) {
+			throw new IllegalArgumentException("SOSRoute interAgent must be of type agent-to-agent");
+		}
 		this.agentToAgent = interAgent;
+		if (serverToAgent.getRouteType() != SOSRouteType.SERVER_2_AGENT) {
+			throw new IllegalArgumentException("SOSRoute serverToAgent must be of type server-to-agent");
+		}
 		this.serverToAgent = serverToAgent;
 		this.serverAgentPort = TransportPort.NONE; // This cannot be known when the first TCP packet is received. It will be learned on the dst-side
 		this.transferId = UUID.randomUUID();
 		this.numParallelSockets = numSockets;
 		this.queueCapacity = queueCapacity;
 		this.bufferSize = bufferSize;
+		this.flowTimeout = flowTimeout;
 		this.flowNames = new HashSet<String>();
 	}
 	
@@ -80,8 +92,8 @@ public class SOSConnection {
 	public SOSClient getClient() {
 		return (SOSClient) this.clientToAgent.getSrcDevice();
 	}
-	public SOSClient getServer() {
-		return (SOSClient) this.serverToAgent.getSrcDevice();
+	public SOSServer getServer() {
+		return (SOSServer) this.serverToAgent.getSrcDevice();
 	}
 	
 	public UUID getTransferID() {
@@ -98,6 +110,10 @@ public class SOSConnection {
 	
 	public int getBufferSize() {
 		return bufferSize;
+	}
+	
+	public int getFlowTimeout() {
+		return flowTimeout;
 	}
 	
 	public Set<String> getFlowNames() {
@@ -132,7 +148,7 @@ public class SOSConnection {
 				+ serverAgentPort + ", transferId=" + transferId
 				+ ", numParallelSockets=" + numParallelSockets
 				+ ", queueCapacity=" + queueCapacity + ", bufferSize="
-				+ bufferSize + ", flowNames=" + flowNames + "]";
+				+ bufferSize + ", flowTimeout=" + flowTimeout + ", flowNames=" + flowNames + "]";
 	}
 
 	@Override
@@ -148,6 +164,7 @@ public class SOSConnection {
 				+ ((flowNames == null) ? 0 : flowNames.hashCode());
 		result = prime * result + numParallelSockets;
 		result = prime * result + queueCapacity;
+		result = prime * result + flowTimeout;
 		result = prime * result
 				+ ((serverAgentPort == null) ? 0 : serverAgentPort.hashCode());
 		result = prime * result
@@ -186,6 +203,8 @@ public class SOSConnection {
 		if (numParallelSockets != other.numParallelSockets)
 			return false;
 		if (queueCapacity != other.queueCapacity)
+			return false;
+		if (flowTimeout != other.flowTimeout)
 			return false;
 		if (serverAgentPort == null) {
 			if (other.serverAgentPort != null)
