@@ -10,6 +10,7 @@ public interface ISOSService extends IFloodlightService {
 		AGENT_ADDED, AGENT_REMOVED,
 		ERR_DUPLICATE_AGENT, ERR_UNKNOWN_AGENT,
 		ENABLED, DISABLED,
+		CONFIG_SET
 	}
 
 	/**

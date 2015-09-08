@@ -824,25 +824,29 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 
 	@Override
 	public synchronized SOSReturnCode setFlowTimeouts(int hardSeconds, int idleSeconds) {
-		// TODO Auto-generated method stub
-		return null;
+		if (idleSeconds >= 0) {
+			flowTimeout = (short) idleSeconds;
+			log.warn("Set idle timeout to {}. Ignoring hard timeout of {}", idleSeconds, hardSeconds); //TODO do we even care about a hard timeout?
+		}
+		return SOSReturnCode.CONFIG_SET;
 	}
 
 	@Override
 	public synchronized SOSReturnCode setNumParallelConnections(int num) {
-		// TODO Auto-generated method stub
-		return null;
+		agentNumParallelSockets = num;
+		log.warn("Set number of parallel connections to {}", num);
+		return SOSReturnCode.CONFIG_SET;
 	}
 
 	@Override
 	public synchronized SOSReturnCode setBufferSize(int bytes) {
-		// TODO Auto-generated method stub
-		return null;
+		bufferSize = bytes;
+		return SOSReturnCode.CONFIG_SET;
 	}
 
 	@Override
 	public synchronized SOSReturnCode setQueueCapacity(int packets) {
-		// TODO Auto-generated method stub
-		return null;
+		agentQueueCapacity = packets;
+		return SOSReturnCode.CONFIG_SET;
 	}
 }

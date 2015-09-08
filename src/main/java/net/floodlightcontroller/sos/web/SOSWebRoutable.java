@@ -8,10 +8,7 @@ import org.restlet.routing.Router;
 
 public class SOSWebRoutable implements RestletRoutable {
 	protected static final String STR_OPERATION = "operation";	
-
-	
-	protected static final String STR_SETTING = "setting";
-	
+		
     /**
      * Create the Restlet router and bind to the proper resources.
      * These are the operations that can be performed via the
@@ -25,7 +22,7 @@ public class SOSWebRoutable implements RestletRoutable {
         router.attach("/agent/{" + STR_OPERATION + "}/json", AgentResource.class);
         router.attach("/whitelist/{" + STR_OPERATION + "}/json", WhitelistResource.class);
         router.attach("/module/{" + STR_OPERATION + "}/json", ModuleResource.class);
-        router.attach("/config/{" + STR_SETTING + "}/json", ConfigResource.class);
+        router.attach("/config/json", ConfigResource.class);
         router.attach("/stats/json", StatisticsResource.class);
         return router;
     }
