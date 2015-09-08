@@ -24,7 +24,6 @@ import org.projectfloodlight.openflow.types.IpProtocol;
 import org.projectfloodlight.openflow.types.MacAddress;
 import org.projectfloodlight.openflow.types.OFBufferId;
 import org.projectfloodlight.openflow.types.OFPort;
-import org.projectfloodlight.openflow.types.TransportPort;
 import org.projectfloodlight.openflow.types.U64;
 import org.projectfloodlight.openflow.types.VlanVid;
 import org.projectfloodlight.openflow.protocol.OFType;
@@ -74,12 +73,15 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	private static IRestApiService restApiService;
 
 	private static MacAddress controllerMac;
-	private static TransportPort agentControlPort; // 9998
-	private static TransportPort agentDataPort; // 9877
+	//private static TransportPort agentControlPort; // 9998
+	//private static TransportPort agentDataPort; // 9877
 
 	private static SOSConnections sosConnections;
 	private static Set<SOSAgent> agents;
+	
+	private static boolean enabled;
 
+	/* These needs to be constant b/t agents, thus we'll keep them global for now */
 	private static int bufferSize;
 	private static int agentQueueCapacity;
 	private static int agentNumParallelSockets;
@@ -103,6 +105,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		restApiService = context.getServiceImpl(IRestApiService.class);
 
 		agents = new HashSet<SOSAgent>();
+		sosConnections = new SOSConnections();
 	}
 
 	@Override
@@ -111,28 +114,25 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		switchService.addOFSwitchListener(this);
 		restApiService.addRestletRoutable(new SOSWebRoutable());
 
-		// Read our config options
+		/* Read our config options */
 		Map<String, String> configOptions = context.getConfigParams(this);
 		try {
 			controllerMac = MacAddress.of(configOptions.get("controller-mac"));
 
+			/* These are defaults */
 			bufferSize = Integer.parseInt(configOptions.get("buffer-size"));
 			agentQueueCapacity = Integer.parseInt(configOptions.get("queue-capacity"));
 			agentNumParallelSockets = Integer.parseInt(configOptions.get("parallel-tcp-sockets"));
 			flowTimeout = Short.parseShort(configOptions.get("flow-timeout"));
+			enabled = Boolean.parseBoolean(configOptions.get("enabled") != null ? configOptions.get("enabled") : "true"); /* enabled by default if not present --> listing module is enabling */
+			
+			//agentControlPort = TransportPort.of(Integer.parseInt(configOptions.get("agent-msg-port")));
+			//agentDataPort = TransportPort.of(Integer.parseInt(configOptions.get("agent-tcp-port")));
 
-			agentControlPort = TransportPort.of(Integer.parseInt(configOptions.get("agent-msg-port")));
-			agentDataPort = TransportPort.of(Integer.parseInt(configOptions.get("agent-tcp-port")));
-
-		} catch(IllegalArgumentException ex) {
-			log.error("Incorrect SOS configuration options", ex);
-			throw ex;
-		} catch(NullPointerException ex) {
+		} catch (IllegalArgumentException | NullPointerException ex) {
 			log.error("Incorrect SOS configuration options", ex);
 			throw ex;
 		}
-
-		sosConnections = new SOSConnections();
 	}
 
 	@Override
@@ -152,7 +152,10 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 
 	@Override
 	public boolean isCallbackOrderingPrereq(OFType type, String name) {
-		// Allow the CONTEXT_SRC/DST_DEVICE field to be populated by the DeviceManager. This makes our job easier :)
+		/* 
+		 * Allow the CONTEXT_SRC/DST_DEVICE field to be populated by 
+		 * the DeviceManager. This makes our job easier :) 
+		 */
 		if (type == OFType.PACKET_IN && name.equalsIgnoreCase("devicemananger")) {
 			return true;
 		} else {
@@ -427,6 +430,20 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	public synchronized net.floodlightcontroller.core.IListener.Command receive(
 			IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
 
+		/*
+		 * If we're disabled, then just stop now
+		 * and let Forwarding/Hub handle the connection.
+		 */
+		if (!enabled) {
+			log.trace("SOS disabled. Not acting on packet; passing to next module.");
+			return Command.CONTINUE;
+		} else {
+			/*
+			 * SOS is enabled; proceed
+			 */
+			log.trace("SOS enabled. Inspecting packet to see if it's a candidate for SOS.");
+		}
+		
 		OFPacketIn pi = (OFPacketIn) msg;
 
 		Ethernet l2 = IFloodlightProviderService.bcStore.get(cntx,
@@ -440,7 +457,10 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			log.debug("Got IpProtocol {}", l3.getProtocol());
 
 			if (l3.getProtocol().equals(IpProtocol.TCP)) {
-				log.debug("Got TCP Packet on port " + (pi.getVersion().compareTo(OFVersion.OF_12) < 0 ? pi.getInPort().toString() : pi.getMatch().get(MatchField.IN_PORT).toString()) + " of switch " + sw.getId());
+				log.debug("Got TCP Packet on port " + (pi.getVersion().compareTo(OFVersion.OF_12) < 0 ? 
+						pi.getInPort().toString() : 
+							pi.getMatch().get(MatchField.IN_PORT).toString()) + " of switch " + sw.getId());
+				
 				TCP l4 = (TCP) l3.getPayload();
 				/* 
 				 * If this source IP and source port (or destination IP and destination port)
@@ -458,7 +478,8 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 
 				if (packetStatus == SOSPacketStatus.INACTIVE_REGISTERED){
 					/* Process new TCP SOS session */
-
+					log.debug("Packet status was inactive but registered. Proceed with SOS.");
+					
 					IDevice srcDevice = IDeviceService.fcStore.get(cntx, IDeviceService.CONTEXT_SRC_DEVICE);
 					IDevice dstDevice = IDeviceService.fcStore.get(cntx, IDeviceService.CONTEXT_DST_DEVICE);
 
@@ -721,14 +742,16 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		}
 	}
 
+	/* **********************************
+	 * IOFSwitchListener implementation *
+	 * **********************************/
+	
 	@Override
 	public void switchAdded(DatapathId dpid) {
-		
 	}
 
 	@Override
 	public void switchRemoved(DatapathId dpid) {
-		
 	}
 
 	@Override
@@ -748,39 +771,49 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	 * ****************************/
 	
 	@Override
-	public SOSReturnCode addAgent(SOSAgent agent) {
-		// TODO Auto-generated method stub
-		return null;
+	public synchronized SOSReturnCode addAgent(SOSAgent agent) {
+		if (agents.contains(agent)) { /* MACs are ignored in devices for equality check, so we should only compare IP and ports here */
+			log.error("Found pre-existing agent during agent add. Not adding new agent {}", agent);
+			return SOSReturnCode.ERR_DUPLICATE_AGENT;
+		} else {
+			log.warn("Agent {} added.", agent);
+			agents.add(agent);
+			return SOSReturnCode.AGENT_ADDED;
+		}
 	}
 
 	@Override
-	public SOSReturnCode removeAgent(SOSAgent agent) {
-		// TODO Auto-generated method stub
-		return null;
+	public synchronized SOSReturnCode removeAgent(SOSAgent agent) {
+		if (agents.contains(agent)) { /* MACs are ignored in devices for equality check, so we should only compare IP and ports here */
+			agents.remove(agent);
+			log.warn("Agent {} removed.", agent);
+			return SOSReturnCode.AGENT_REMOVED;
+		} else {
+			log.error("Could not locate agent {} to remove. Not removing agent.", agent);
+			return SOSReturnCode.ERR_UNKNOWN_AGENT;
+		}
 	}
 
 	@Override
-	public SOSReturnCode addClient(SOSClient client) {
-		// TODO Auto-generated method stub
-		return null;
+	public synchronized SOSReturnCode addWhitelistEntry(SOSWhitelistEntry entry) {
+		return sosConnections.addWhitelistEntry(entry);
 	}
 
 	@Override
-	public SOSReturnCode removeClient(SOSClient client) {
-		// TODO Auto-generated method stub
-		return null;
+	public synchronized SOSReturnCode removeWhitelistEntry(SOSWhitelistEntry entry) {
+		return sosConnections.removeWhitelistEntry(entry);
 	}
 
 	@Override
-	public SOSReturnCode enable() {
-		// TODO Auto-generated method stub
-		return null;
+	public synchronized SOSReturnCode enable() {
+		enabled = true;
+		return SOSReturnCode.ENABLED;
 	}
 
 	@Override
-	public SOSReturnCode disable() {
-		// TODO Auto-generated method stub
-		return null;
+	public synchronized SOSReturnCode disable() {
+		enabled = false;
+		return SOSReturnCode.DISABLED;
 	}
 
 	@Override
@@ -790,25 +823,25 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	}
 
 	@Override
-	public SOSReturnCode setFlowTimeouts(int hardSeconds, int idleSeconds) {
+	public synchronized SOSReturnCode setFlowTimeouts(int hardSeconds, int idleSeconds) {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
 	@Override
-	public SOSReturnCode setNumParallelConnections(int num) {
+	public synchronized SOSReturnCode setNumParallelConnections(int num) {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
 	@Override
-	public SOSReturnCode setBufferSize(int bytes) {
+	public synchronized SOSReturnCode setBufferSize(int bytes) {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
 	@Override
-	public SOSReturnCode setQueueCapacity(int packets) {
+	public synchronized SOSReturnCode setQueueCapacity(int packets) {
 		// TODO Auto-generated method stub
 		return null;
 	}

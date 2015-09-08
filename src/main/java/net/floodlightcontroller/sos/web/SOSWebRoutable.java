@@ -8,10 +8,6 @@ import org.restlet.routing.Router;
 
 public class SOSWebRoutable implements RestletRoutable {
 	protected static final String STR_OPERATION = "operation";	
-	protected static final String STR_OPERATION_ADD = "add";	
-	protected static final String STR_OPERATION_REMOVE = "remove";	
-	protected static final String STR_OPERATION_ENABLE = "enable";	
-	protected static final String STR_OPERATION_DISABLE = "disable";	
 
 	
 	protected static final String STR_SETTING = "setting";
@@ -27,7 +23,7 @@ public class SOSWebRoutable implements RestletRoutable {
     public Restlet getRestlet(Context context) {
         Router router = new Router(context);
         router.attach("/agent/{" + STR_OPERATION + "}/json", AgentResource.class);
-        router.attach("/client/{" + STR_OPERATION + "}/json", ClientResource.class);
+        router.attach("/whitelist/{" + STR_OPERATION + "}/json", WhitelistResource.class);
         router.attach("/module/{" + STR_OPERATION + "}/json", ModuleResource.class);
         router.attach("/config/{" + STR_SETTING + "}/json", ConfigResource.class);
         router.attach("/stats/json", StatisticsResource.class);

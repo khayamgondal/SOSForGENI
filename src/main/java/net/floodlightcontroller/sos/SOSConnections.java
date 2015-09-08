@@ -1,18 +1,28 @@
 package net.floodlightcontroller.sos;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
+
+import net.floodlightcontroller.sos.ISOSService.SOSReturnCode;
 
 import org.projectfloodlight.openflow.types.IPv4Address;
 import org.projectfloodlight.openflow.types.OFPort;
 import org.projectfloodlight.openflow.types.TransportPort;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SOSConnections  {
-
-	private static ArrayList<SOSConnection> CONNECTIONS = null;
+	private static final Logger log = LoggerFactory.getLogger(SOSConnections.class);
+	private static ArrayList<SOSConnection> connections = null;
+	private static Set<SOSWhitelistEntry> whitelist = null;
 	
 	public SOSConnections() {
-		if (CONNECTIONS == null) {
-			CONNECTIONS = new ArrayList<SOSConnection>();
+		if (connections == null) {
+			connections = new ArrayList<SOSConnection>();
+		}
+		if (whitelist == null) {
+			whitelist = new HashSet<SOSWhitelistEntry>();
 		}
 	}
 	
@@ -33,7 +43,7 @@ public class SOSConnections  {
 			SOSRoute serverToAgent, int numSockets, 
 			int queueCapacity, int bufferSize,
 			int flowTimeout) {
-		CONNECTIONS.add(new SOSConnection(clientToAgent, interAgent,
+		connections.add(new SOSConnection(clientToAgent, interAgent,
 				serverToAgent, numSockets,
 				queueCapacity, bufferSize,
 				flowTimeout)); 
@@ -48,10 +58,10 @@ public class SOSConnections  {
 	 * @return
 	 */
 	public boolean removeConnection(IPv4Address ip, OFPort port) {
-		for (SOSConnection conn : CONNECTIONS) {
+		for (SOSConnection conn : connections) {
 			if (conn.getClient().getIPAddr().equals(ip) && conn.getClient().getTcpPort().equals(port) ||
 					conn.getServer().getIPAddr().equals(ip) && conn.getServer().getTcpPort().equals(port)) {
-				CONNECTIONS.remove(conn);
+				connections.remove(conn);
 				return true;
 			}
 		}
@@ -66,7 +76,7 @@ public class SOSConnections  {
 	 * @return
 	 */
 	public SOSConnection getConnectionFromIP(IPv4Address ip, TransportPort port) {
-		for (SOSConnection conn : CONNECTIONS) {
+		for (SOSConnection conn : connections) {
 			if (conn.getClient().getIPAddr().equals(ip) && conn.getClient().getTcpPort().equals(port)) {
 				return conn;
 			} else if (conn.getServer().getIPAddr().equals(ip) && conn.getServer().getTcpPort().equals(port)) {
@@ -87,13 +97,8 @@ public class SOSConnections  {
 	 * @return
 	 */
 	public SOSPacketStatus getSOSPacketStatus(IPv4Address srcIP, IPv4Address dstIP, TransportPort srcPort, TransportPort dstPort) {
-		for (SOSConnection conn : CONNECTIONS) {
-			if (conn.getClient().getIPAddr().equals(srcIP) && conn.getServer().getTcpPort().equals(dstPort) && /* don't know the source transport port in conn */
-					conn.getServer().getIPAddr().equals(dstIP)) {
-				
-				return SOSPacketStatus.INACTIVE_REGISTERED;
-				
-			} else if (conn.getClient().getIPAddr().equals(srcIP) && conn.getClient().getTcpPort().equals(srcPort) ) {
+		for (SOSConnection conn : connections) {
+			if (conn.getClient().getIPAddr().equals(srcIP) && conn.getClient().getTcpPort().equals(srcPort) ) {
 				
 				return SOSPacketStatus.ACTIVE_CLIENT_TO_CLIENT_SIDE_AGENT;
 				
@@ -120,6 +125,38 @@ public class SOSConnections  {
 				return SOSPacketStatus.ACTIVE_SERVER_SIDE_AGENT_TO_CLIENT_SIDE_AGENT;
 			}
 		}
+		
+		for (SOSWhitelistEntry entry : whitelist) {
+			if (entry.getClientIP().equals(srcIP) && entry.getServerPort().equals(dstPort) && /* don't know the source transport port */
+					entry.getServerIP().equals(dstIP)) {
+				/* We found the packet's headers in our whitelist */
+				return SOSPacketStatus.INACTIVE_REGISTERED;
+			}
+		}
+		
+		/* If it's not an active connection AND it's not registered, then we'll get here */
 		return SOSPacketStatus.INACTIVE_UNREGISTERED;
+	}
+	
+	public SOSReturnCode addWhitelistEntry(SOSWhitelistEntry entry) {
+		if (whitelist.contains(entry)) {
+			log.error("Found pre-existing whitelist entry during entry add. Not adding new entry {}", entry);
+			return SOSReturnCode.ERR_DUPLICATE_WHITELIST_ENTRY;
+		} else {
+			log.warn("Whitelist entry {} added.", entry);
+			whitelist.add(entry);
+			return SOSReturnCode.WHITELIST_ENTRY_ADDED;
+		}
+	}
+
+	public SOSReturnCode removeWhitelistEntry(SOSWhitelistEntry entry) {
+		if (whitelist.contains(entry)) { 
+			whitelist.remove(entry);
+			log.warn("Whitelist entry {} removed.", entry);
+			return SOSReturnCode.WHITELIST_ENTRY_REMOVED;
+		} else {
+			log.error("Could not locate whitelist entry {} to remove. Not removing entry.", entry);
+			return SOSReturnCode.ERR_UNKNOWN_WHITELIST_ENTRY;
+		}
 	}
 }

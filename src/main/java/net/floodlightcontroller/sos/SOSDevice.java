@@ -53,8 +53,9 @@ public abstract class SOSDevice {
 		final int prime = 31;
 		int result = 1;
 		result = prime * result + ((ip_addr == null) ? 0 : ip_addr.hashCode());
-		result = prime * result
-				+ ((mac_addr == null) ? 0 : mac_addr.hashCode());
+		/* Ignore MAC addresses */
+		/* result = prime * result
+				+ ((mac_addr == null) ? 0 : mac_addr.hashCode()); */
 		result = prime * result + ((type == null) ? 0 : type.hashCode());
 		return result;
 	}
@@ -73,11 +74,12 @@ public abstract class SOSDevice {
 				return false;
 		} else if (!ip_addr.equals(other.ip_addr))
 			return false;
-		if (mac_addr == null) {
+		/* Ignore MAC addresses */
+		/* if (mac_addr == null) {
 			if (other.mac_addr != null)
-				return false;
+				return false; 
 		} else if (!mac_addr.equals(other.mac_addr))
-			return false;
+			return false; */
 		if (type != other.type)
 			return false;
 		return true;

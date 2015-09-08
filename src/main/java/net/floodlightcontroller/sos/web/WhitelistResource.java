@@ -5,8 +5,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 import net.floodlightcontroller.sos.ISOSService;
-import net.floodlightcontroller.sos.SOSAgent;
 import net.floodlightcontroller.sos.ISOSService.SOSReturnCode;
+import net.floodlightcontroller.sos.SOSWhitelistEntry;
 
 import org.projectfloodlight.openflow.types.IPv4Address;
 import org.projectfloodlight.openflow.types.TransportPort;
@@ -21,58 +21,56 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.MappingJsonFactory;
 
-public class AgentResource extends ServerResource {
-	protected static Logger log = LoggerFactory.getLogger(AgentResource.class);
+public class WhitelistResource extends ServerResource {
+	protected static Logger log = LoggerFactory.getLogger(WhitelistResource.class);
 	protected static final String STR_OPERATION_ADD = "add";	
 	protected static final String STR_OPERATION_REMOVE = "remove";
 
-	protected static final String STR_IP = "ip-address";
-	protected static final String STR_DATA_PORT = "data-port";
-	protected static final String STR_CONTROL_PORT = "control-port";
+	protected static final String STR_SERVER_IP = "server-ip-address";
+	protected static final String STR_SERVER_PORT = "server-tcp-port";
+	protected static final String STR_CLIENT_IP = "client-ip-address";
 
 	@Put("json")
 	@Post("json")
-	public Map<String, String> handleAgent(String json) {
+	public Map<String, String> handleWhitelist(String json) {
 		ISOSService sosService = (ISOSService) getContext().getAttributes().get(ISOSService.class.getCanonicalName());
 		String operation = ((String) getRequestAttributes().get(SOSWebRoutable.STR_OPERATION)).toLowerCase().trim();
 		
 		Map<String, String> ret = new HashMap<String, String>();
 
-		SOSAgent agent = parseAgentFromJson(json);
-		if (agent == null) {
+		SOSWhitelistEntry entry = parseWhitelistEntryFromJson(json);
+		if (entry == null) {
 			ret.put(Code.CODE, Code.ERR_JSON);
 			ret.put(Code.MESSAGE, "Error: Could not parse JSON.");
 		} else if (operation.equals(STR_OPERATION_ADD)) {
-			SOSReturnCode rc = sosService.addAgent(agent);
+			SOSReturnCode rc = sosService.addWhitelistEntry(entry);
 			switch (rc) {
-			case AGENT_ADDED:
+			case WHITELIST_ENTRY_ADDED:
 				ret.put(Code.CODE, Code.OKAY);
-				ret.put(Code.MESSAGE, "Agent successfully added. It will be available for the next SOS session.");
+				ret.put(Code.MESSAGE, "WhitelistEntry successfully added. The entry may initiate the data transfer.");
 				break;
-			case ERR_DUPLICATE_AGENT:
+			case ERR_DUPLICATE_WHITELIST_ENTRY:
 				ret.put(Code.CODE, Code.ERR_DUPLICATE);
-				ret.put(Code.MESSAGE, "Error: A duplicate agent was detected. Unable to add agent to SOS.");
+				ret.put(Code.MESSAGE, "Error: A duplicate entry was detected. Unable to add entry to SOS.");
 				break;
 			default:
 				ret.put(Code.CODE, Code.ERR_BAD_ERR_CODE);
-				ret.put(Code.MESSAGE, "Error: Unexpected error code " + rc.toString() + ". Agent was not added.");
-				break;
+				ret.put(Code.MESSAGE, "Error: Unexpected error code " + rc.toString() + ". WhitelistEntry was not added.");
 			}
 		} else if (operation.equals(STR_OPERATION_REMOVE)) {
-			SOSReturnCode rc = sosService.removeAgent(agent);
+			SOSReturnCode rc = sosService.removeWhitelistEntry(entry);
 			switch (rc) {
-			case AGENT_REMOVED:
+			case WHITELIST_ENTRY_REMOVED:
 				ret.put(Code.CODE, Code.OKAY);
-				ret.put(Code.MESSAGE, "Agent successfully removed. It will be no longer be available for the next SOS session.");
+				ret.put(Code.MESSAGE, "WhitelistEntry successfully removed. Any ongoing data transfers for this entry will persist until their individual termination.");
 				break;
-			case ERR_UNKNOWN_AGENT:
+			case ERR_UNKNOWN_WHITELIST_ENTRY:
 				ret.put(Code.CODE, Code.ERR_NOT_FOUND);
-				ret.put(Code.MESSAGE, "Error: The agent specified was not found. Unable to remove agent from SOS.");
+				ret.put(Code.MESSAGE, "Error: The entry specified was not found. Unable to remove entry from SOS.");
 				break;
 			default:
 				ret.put(Code.CODE, Code.ERR_BAD_ERR_CODE);
-				ret.put(Code.MESSAGE, "Error: Unexpected error code " + rc.toString() + ". Agent was not removed.");
-				break;
+				ret.put(Code.MESSAGE, "Error: Unexpected error code " + rc.toString() + ". WhitelistEntry was not removed.");
 			}
 		} else {
 			ret.put(Code.CODE, Code.ERR_UNDEF_OPERATION);
@@ -85,21 +83,21 @@ public class AgentResource extends ServerResource {
 	/**
 	 * Expect JSON:
 	 * {
-	 * 		"ip-address"	:	"valid-ip-address",
-	 * 		"data-port"		:	"tcp-port-agent-will-listen-on-for-data",
-	 * 		"control-port"	:	"udp-port-agent-will-listen-on-for-controller-commands"
+	 * 		"server-ip-address"		:	"valid-ip-address",
+	 * 		"sever- tcp-port"		:	"valid-tcp-port",
+	 * 		"client-ip-address"		:	"valid-ip-address",
 	 * }
 	 * 
 	 * @param json
 	 * @return
 	 */
-	private static SOSAgent parseAgentFromJson(String json) {
+	private static SOSWhitelistEntry parseWhitelistEntryFromJson(String json) {
 		MappingJsonFactory f = new MappingJsonFactory();
 		JsonParser jp;
 
-		IPv4Address ip = IPv4Address.NONE;
-		TransportPort dataPort = TransportPort.NONE;
-		TransportPort controlPort = TransportPort.NONE;
+		IPv4Address serverIp = IPv4Address.NONE;
+		TransportPort serverPort = TransportPort.NONE;
+		IPv4Address clientIp = IPv4Address.NONE;
 
 		if (json == null || json.isEmpty()) {
 			return null;
@@ -127,32 +125,32 @@ public class AgentResource extends ServerResource {
 				String value = jp.getText().toLowerCase().trim();
 				if (value.isEmpty() || key.isEmpty()) {
 					continue;
-				} else if (key.equals(STR_IP)) {
+				} else if (key.equals(STR_SERVER_IP)) {
 					try {
-						ip = IPv4Address.of(value);
+						serverIp = IPv4Address.of(value);
 					} catch (IllegalArgumentException e) {
 						log.error("Invalid IPv4 address {}", value);
 					}
-				} else if (key.equals(STR_DATA_PORT)) {
+				} else if (key.equals(STR_SERVER_PORT)) {
 					try {
-						dataPort = TransportPort.of(Integer.parseInt(value));
+						serverPort = TransportPort.of(Integer.parseInt(value));
 					} catch (IllegalArgumentException e) {
-						log.error("Invalid data port {}", value);
+						log.error("Invalid port {}", value);
 					}
-				} else if (key.equals(STR_CONTROL_PORT)) {
+				} else if (key.equals(STR_CLIENT_IP)) {
 					try {
-						controlPort = TransportPort.of(Integer.parseInt(value));
+						clientIp = IPv4Address.of(value);
 					} catch (IllegalArgumentException e) {
-						log.error("Invalid control port {}", value);
+						log.error("Invalid IPv4 address {}", value);
 					}
 				}
 			}
 		} catch (IOException e) {
-			log.error("Error parsing JSON into SOSAgent {}", e);
+			log.error("Error parsing JSON into SOSWhitelistEntry {}", e);
 		}
 		
-		if (!ip.equals(IPv4Address.NONE) && !dataPort.equals(TransportPort.NONE) && !controlPort.equals(TransportPort.NONE)) {
-			return new SOSAgent(ip, dataPort, controlPort);
+		if (!serverIp.equals(IPv4Address.NONE) && !serverPort.equals(TransportPort.NONE) && !clientIp.equals(IPv4Address.NONE) ) {
+			return SOSWhitelistEntry.of(serverIp, serverPort, clientIp);
 		} else {
 			return null;
 		}

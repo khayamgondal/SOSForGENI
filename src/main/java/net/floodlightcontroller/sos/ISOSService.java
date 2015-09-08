@@ -5,8 +5,8 @@ import net.floodlightcontroller.core.module.IFloodlightService;
 public interface ISOSService extends IFloodlightService {
 	
 	public enum SOSReturnCode {
-		CLIENT_ADDED, CLIENT_REMOVED,
-		ERR_DUPLICATE_CLIENT, ERR_UNKNOWN_CLIENT,
+		WHITELIST_ENTRY_ADDED, WHITELIST_ENTRY_REMOVED,
+		ERR_DUPLICATE_WHITELIST_ENTRY, ERR_UNKNOWN_WHITELIST_ENTRY,
 		AGENT_ADDED, AGENT_REMOVED,
 		ERR_DUPLICATE_AGENT, ERR_UNKNOWN_AGENT,
 		ENABLED, DISABLED,
@@ -29,22 +29,20 @@ public interface ISOSService extends IFloodlightService {
 	public SOSReturnCode removeAgent(SOSAgent agent);
 	
 	/**
-	 * Proactively add a client to SOS. Any future packets
-	 * matching this client will be handled by SOS.
-	 * @param client
+	 * Proactively add someone to the SOS whitelist . Any future 
+	 * packets matching this entry will be handled by SOS.
+	 * @param entry
 	 * @return
 	 */
-	public SOSReturnCode addClient(SOSClient client);
+	public SOSReturnCode addWhitelistEntry(SOSWhitelistEntry entry);
 	
 	/**
-	 * Remove a client from SOS. Any active SOS sessions
-	 * will not be impacted. The client will not be
-	 * whitelisted for any future packets not presently
-	 * part of a client's active SOS session.
-	 * @param client
+	 * Remove a whitelist entry from SOS. Any active SOS sessions
+	 * will not be impacted.
+	 * @param entry
 	 * @return
 	 */
-	public SOSReturnCode removeClient(SOSClient client);
+	public SOSReturnCode removeWhitelistEntry(SOSWhitelistEntry entry);
 	
 	/**
 	 * Enable SOS
