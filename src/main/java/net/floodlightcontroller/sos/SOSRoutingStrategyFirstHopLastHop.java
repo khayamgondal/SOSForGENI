@@ -42,10 +42,10 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 	}
 
 	@Override
-	public Set<String> pushRoute(SOSRoute route, SOSConnection conn) {
+	public void pushRoute(SOSRoute route, SOSConnection conn) {
 		if (route.getRouteType() != SOSRouteType.CLIENT_2_AGENT &&
 				route.getRouteType() != SOSRouteType.SERVER_2_AGENT) {
-			log.error("Only route types client-to-agent or server-to-agent are supported.");
+			throw new IllegalArgumentException("Only route types client-to-agent or server-to-agent are supported.");
 		}
 
 		int flowCount = 1;
@@ -257,8 +257,67 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				log.info("added flow on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId() + flowName);
 			} else {
 				/* Simply forward to next hop from here */
+				OFFactory factory = SOS.switchService.getSwitch(in.getNodeId()).getOFFactory();
+				OFFlowAdd.Builder flow = factory.buildFlowAdd();
+				Match.Builder match = factory.buildMatch();
+				ArrayList<OFAction> actionList = new ArrayList<OFAction>();
 
+				match.setExact(MatchField.IN_PORT, in.getPortId());
+				match.setExact(MatchField.ETH_SRC, route.getSrcDevice().getMACAddr());
+				match.setExact(MatchField.ETH_DST, route.getDstDevice().getMACAddr());
+				match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
+				match.setExact(MatchField.IPV4_SRC, route.getSrcDevice().getIPAddr());
+				match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
+				if (route.getSrcDevice() instanceof SOSClient) {
+					match.setExact(MatchField.TCP_SRC, ((SOSClient) route.getSrcDevice()).getTcpPort());
+				} else {
+					match.setExact(MatchField.TCP_SRC, ((SOSServer) route.getSrcDevice()).getTcpPort());
+				}
+				actionList.add(factory.actions().output(out.getPortId(), 0xffFFffFF));
+
+				flow.setBufferId(OFBufferId.NO_BUFFER);
+				flow.setOutPort(OFPort.ANY);
+				flow.setActions(actionList);
+				flow.setMatch(match.build());
+				flow.setPriority(32767);
+				flow.setIdleTimeout(conn.getFlowTimeout());
+
+				String flowName = "sos-" + flowCount++;
+				SOS.sfp.addFlow(flowName, flow.build(), SOS.switchService.getSwitch(in.getNodeId()).getId());
+				flows.add(flowName);
+				log.info("added flow on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId() + flowName);
+				
+				/* And now do the reverse flow */
+				flow = factory.buildFlowAdd();
+				match = factory.buildMatch();
+				actionList = new ArrayList<OFAction>();
+
+				match.setExact(MatchField.IN_PORT, out.getPortId());
+				match.setExact(MatchField.ETH_DST, route.getSrcDevice().getMACAddr());
+				match.setExact(MatchField.ETH_SRC, route.getDstDevice().getMACAddr());
+				match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
+				match.setExact(MatchField.IPV4_DST, route.getSrcDevice().getIPAddr());
+				match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
+				if (route.getDstDevice() instanceof SOSClient) {
+					match.setExact(MatchField.TCP_DST, ((SOSClient) route.getSrcDevice()).getTcpPort());
+				} else {
+					match.setExact(MatchField.TCP_DST, ((SOSServer) route.getSrcDevice()).getTcpPort());
+				}
+				actionList.add(factory.actions().output(in.getPortId(), 0xffFFffFF));
+
+				flow.setBufferId(OFBufferId.NO_BUFFER);
+				flow.setOutPort(OFPort.ANY);
+				flow.setActions(actionList);
+				flow.setMatch(match.build());
+				flow.setPriority(32767);
+				flow.setIdleTimeout(conn.getFlowTimeout());
+
+				flowName = "sos-" + flowCount++;
+				SOS.sfp.addFlow(flowName, flow.build(), SOS.switchService.getSwitch(in.getNodeId()).getId());
+				flows.add(flowName);
+				log.info("added flow on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId() + flowName);
 			}
 		}
+		conn.addFlows(flows);
 	}
 }

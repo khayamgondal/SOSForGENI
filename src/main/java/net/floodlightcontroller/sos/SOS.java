@@ -9,8 +9,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.projectfloodlight.openflow.protocol.OFFlowAdd;
-import org.projectfloodlight.openflow.protocol.match.Match;
 import org.projectfloodlight.openflow.protocol.match.MatchField;
 import org.projectfloodlight.openflow.protocol.OFFactory;
 import org.projectfloodlight.openflow.protocol.OFMessage;
@@ -48,7 +46,6 @@ import net.floodlightcontroller.core.module.IFloodlightService;
 import net.floodlightcontroller.devicemanager.IDevice;
 import net.floodlightcontroller.devicemanager.IDeviceService;
 import net.floodlightcontroller.devicemanager.SwitchPort;
-import net.floodlightcontroller.devicemanager.internal.DeviceManagerImpl;
 import net.floodlightcontroller.packet.ARP;
 import net.floodlightcontroller.packet.Data;
 import net.floodlightcontroller.packet.Ethernet;
@@ -56,24 +53,25 @@ import net.floodlightcontroller.packet.IPacket;
 import net.floodlightcontroller.packet.IPv4;
 import net.floodlightcontroller.packet.TCP;
 import net.floodlightcontroller.packet.UDP;
+import net.floodlightcontroller.restserver.IRestApiService;
 import net.floodlightcontroller.routing.IRoutingService;
 import net.floodlightcontroller.routing.Route;
+import net.floodlightcontroller.sos.web.SOSWebRoutable;
 import net.floodlightcontroller.staticflowentry.IStaticFlowEntryPusherService;
-import net.floodlightcontroller.topology.ITopologyService;
 
 /**
  * Steroid OpenFlow Service Module
  * @author Ryan Izard, rizard@g.clemson.edu
  * 
  */
-public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightModule  {
+public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightModule, ISOSService  {
 	private static final Logger log = LoggerFactory.getLogger(SOS.class);
 	protected static IFloodlightProviderService floodlightProvider;
 	protected static IOFSwitchService switchService;
-	private static ITopologyService topologyService;
 	private static IRoutingService routingService;
 	private static IDeviceService deviceService;
 	protected static IStaticFlowEntryPusherService sfp;
+	private static IRestApiService restApiService;
 
 	private static MacAddress controllerMac;
 	private static TransportPort agentControlPort; // 9998
@@ -100,9 +98,9 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		floodlightProvider = context.getServiceImpl(IFloodlightProviderService.class);
 		switchService = context.getServiceImpl(IOFSwitchService.class);
 		routingService = context.getServiceImpl(IRoutingService.class);
-		topologyService = context.getServiceImpl(ITopologyService.class);
 		deviceService = context.getServiceImpl(IDeviceService.class);
 		sfp = context.getServiceImpl(IStaticFlowEntryPusherService.class);
+		restApiService = context.getServiceImpl(IRestApiService.class);
 
 		agents = new HashSet<SOSAgent>();
 	}
@@ -111,6 +109,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	public void startUp(FloodlightModuleContext context) {
 		floodlightProvider.addOFMessageListener(OFType.PACKET_IN, this);
 		switchService.addOFSwitchListener(this);
+		restApiService.addRestletRoutable(new SOSWebRoutable());
 
 		// Read our config options
 		Map<String, String> configOptions = context.getConfigParams(this);
@@ -183,7 +182,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	 */
 	private void sendInfoToAgent(FloodlightContext cntx, SOSConnection conn, boolean isClientSideAgent) {
 		OFFactory factory;
-		
+
 		/* Both use route last-hop, since the packets are destined for the agents */
 		if (isClientSideAgent) {
 			factory = switchService.getSwitch(conn.getClientSideRoute().getRouteLastHop().getNodeId()).getOFFactory();
@@ -300,7 +299,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			switchService.getSwitch(conn.getServerSideRoute().getRouteLastHop().getNodeId()).write(ofPacket.build());
 		}
 	}
-	
+
 	/**
 	 * Send an OF packet with the TCP "spark" packet (the packet that "sparked" the SOS session)
 	 * encapsulated inside. This packet is destined for the client-side agent. 
@@ -360,7 +359,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		 */
 		switchService.getSwitch(conn.getClientSideRoute().getRouteLastHop().getNodeId()).write(ofPacket.build());
 	}
-	
+
 	/**
 	 * Send an OF packet with the TCP "spark" packet (the packet that "sparked" the SOS session)
 	 * encapsulated inside. This packet is destined for the server from the server-side agent. 
@@ -443,7 +442,8 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			if (l3.getProtocol().equals(IpProtocol.TCP)) {
 				log.debug("Got TCP Packet on port " + (pi.getVersion().compareTo(OFVersion.OF_12) < 0 ? pi.getInPort().toString() : pi.getMatch().get(MatchField.IN_PORT).toString()) + " of switch " + sw.getId());
 				TCP l4 = (TCP) l3.getPayload();
-				/* If this source IP and source port (or destination IP and destination port)
+				/* 
+				 * If this source IP and source port (or destination IP and destination port)
 				 * have already been assigned a connection then we really shouldn't get to 
 				 * this point. Flows matching the source IP and source port should have already
 				 * been inserted switching those packets to the source agent. 
@@ -490,35 +490,19 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 					if (serverRoute == null) {
 						return Command.STOP;
 					}
-					
+
 					SOSRoute interAgentRoute = routeBetweenAgents((SOSAgent) clientRoute.getDstDevice(), (SOSAgent) clientRoute.getDstDevice());
 
 					/* Establish connection */
 					SOSConnection newSOSconnection = sosConnections.addConnection(clientRoute, interAgentRoute, serverRoute, 
-							agentNumParallelSockets, agentQueueCapacity, bufferSize);
+							agentNumParallelSockets, agentQueueCapacity, bufferSize, flowTimeout);
 					log.debug("Starting new SOS session: \r\n" + newSOSconnection.toString());
 
 					/* Push flows and add flow names to connection (for removal upon termination) */
-					log.debug("Pushing source-side and inter-agent SOS flows");
-					pushRoute(newSOSconnection.getClientSideRoute());
-					pushRoute(newSOSconnection.getInterAgentRoute());
-					
-					/*
-					pushSOSFlow_1(newSOSconnection);                                 
-					pushSOSFlow_2(newSOSconnection);
-					pushSOSFlow_3(newSOSconnection);
-					pushSOSFlow_4(newSOSconnection);
-					pushSOSFlow_5(newSOSconnection);
-					//pushSOSFlow_6(newSOSconnection);
-					pushSOSFlow_6a(newSOSconnection);
-					pushSOSFlow_6b(newSOSconnection);
-					pushSOSFlow_7(newSOSconnection);
-					pushSOSFlow_8(newSOSconnection);
-					//pushSOSFlow_9(newSOSconnection);
-					pushSOSFlow_9a(newSOSconnection);
-					pushSOSFlow_9b(newSOSconnection);
-					pushSOSFlow_10(newSOSconnection);
-					*/
+					log.debug("Pushing client-side SOS flows");
+					pushRoute(newSOSconnection.getClientSideRoute(), newSOSconnection);
+					log.debug("Pushing inter-agent SOS flows");
+					pushRoute(newSOSconnection.getInterAgentRoute(), newSOSconnection);
 
 					/* Send the initial TCP packet that triggered this module to the home agent */
 					log.debug("Sending client-side spark packet to client-side agent");
@@ -539,14 +523,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 						log.debug("Finalizing SOS session: \r\n" + conn.toString());
 
 						log.debug("Pushing server-side SOS flows");
-						pushRoute(conn.getServerSideRoute());
-						
-						/*
-						pushSOSFlow_11(conn);
-						pushSOSFlow_12(conn);
-						pushSOSFlow_13(conn);
-						pushSOSFlow_14(conn);
-						*/
+						pushRoute(conn.getServerSideRoute(), conn);
 
 						log.debug("Sending server-side spark packet to server");
 						sendServerSparkPacket(cntx, l2, conn);
@@ -558,7 +535,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 					log.error("Received a TCP packet w/status {} that belongs to an ongoing SOS session. Check accuracy of flows/Report SOS bug", packetStatus);
 				}
 
-				/* We don't want other modules messing with our SOS TCP session (namely Forwarding) */
+				/* We don't want other modules messing with our SOS TCP session (namely Forwarding/Hub) */
 				return Command.STOP;
 
 			} // END IF TCP packet
@@ -653,7 +630,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		if (si.hasNext() && di.hasNext()) {
 			IDevice sd = si.next();
 			IDevice dd = di.next();
-			
+
 			/* The 0th attachment point should always be the real location unless we've experienced an agent migration (which should be done in a maintenance period). */
 			SwitchPort[] sAps = sd.getAttachmentPoints();
 			SwitchPort[] dAps = dd.getAttachmentPoints();
@@ -728,696 +705,30 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	 * 
 	 * @param route
 	 */
-	private void pushRoute(SOSRoute route) {
+	private void pushRoute(SOSRoute route, SOSConnection conn) {
+		ISOSRoutingStrategy rs;
 		if (route.getRouteType() == SOSRouteType.CLIENT_2_AGENT) {
-			
+			rs = new SOSRoutingStrategyFirstHopLastHop(true);
+			rs.pushRoute(route, conn);
 		} else if (route.getRouteType() == SOSRouteType.AGENT_2_AGENT) {
-			ISOSRoutingStrategy rs = new 
+			rs = new SOSRoutingStrategyInterAgent();
+			rs.pushRoute(route, conn);
 		} else if (route.getRouteType() == SOSRouteType.SERVER_2_AGENT) {
-			
+			rs = new SOSRoutingStrategyFirstHopLastHop(true);
+			rs.pushRoute(route, conn);
 		} else {
 			log.error("Received invalid SOSRouteType of {}", route.getRouteType());
 		}
 	}
-	
-	public void pushSOSFlow_1(SOSConnection conn) {
-		OFFactory factory = switchService.getSwitch(conn.getSrcNtwkSwitch()).getOFFactory();
-		OFFlowAdd.Builder flow = factory.buildFlowAdd();
-		Match.Builder match = factory.buildMatch();
-		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
-
-		match.setExact(MatchField.IN_PORT, conn.getSrcClient().getSwitchPort());
-		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-		match.setExact(MatchField.IPV4_SRC, conn.getSrcClient().getIPAddr());
-		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-		match.setExact(MatchField.TCP_SRC, conn.getSrcPort());
-
-		if (factory.getVersion().compareTo(OFVersion.OF_12) < 0) {
-			actionList.add(factory.actions().setDlDst(conn.getSrcAgent().getMACAddr()));
-		} else {
-			actionList.add(factory.actions().setField(factory.oxms().ethDst(conn.getSrcAgent().getMACAddr())));
-		}
-
-		actionList.add(factory.actions().output(conn.getSrcAgent().getSwitchPort(), 0xffFFffFF));
-
-		flow.setBufferId(OFBufferId.NO_BUFFER);
-		flow.setOutPort(OFPort.ANY);
-		flow.setActions(actionList);
-		flow.setMatch(match.build());
-		flow.setPriority(32767);
-		flow.setIdleTimeout(flowTimeout);
-
-		String flowName = "sos-1-" + conn.getSrcClient().getIPAddr().toString() + 
-				"-" + conn.getSrcPort().toString() + 
-				"-to-" + conn.getDstClient().getIPAddr().toString() +
-				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getSrcNtwkSwitch()).getId());
-		conn.addFlow(flowName);
-		log.info("added flow on SW " + switchService.getSwitch(conn.getSrcNtwkSwitch()).getId() + flowName);
-	}
-	public void pushSOSFlow_2(SOSConnection conn) {
-		OFFactory factory = switchService.getSwitch(conn.getSrcAgentSwitch()).getOFFactory();
-		OFFlowAdd.Builder flow = factory.buildFlowAdd();
-		Match.Builder match = factory.buildMatch();
-		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
-
-		match.setExact(MatchField.IN_PORT, SRC_AGENT_OVS_PORT);
-		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-		match.setExact(MatchField.IPV4_SRC, conn.getSrcClient().getIPAddr());
-		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-		match.setExact(MatchField.TCP_SRC, conn.getSrcPort());
-
-		if (factory.getVersion().compareTo(OFVersion.OF_12) < 0) {
-			actionList.add(factory.actions().setDlDst(conn.getSrcAgent().getMACAddr()));
-			actionList.add(factory.actions().setNwDst(conn.getSrcAgent().getIPAddr()));
-			actionList.add(factory.actions().setTpDst(agentDataPort));
-		} else {
-			actionList.add(factory.actions().setField(factory.oxms().ethDst(conn.getSrcAgent().getMACAddr())));
-			actionList.add(factory.actions().setField(factory.oxms().ipv4Dst(conn.getSrcAgent().getIPAddr())));
-			actionList.add(factory.actions().setField(factory.oxms().tcpDst(agentDataPort)));
-		}
-
-		actionList.add(factory.actions().output(OFPort.LOCAL, 0xffFFffFF));
-
-		flow.setBufferId(OFBufferId.NO_BUFFER);
-		flow.setOutPort(OFPort.ANY);
-		flow.setActions(actionList);
-		flow.setMatch(match.build());
-		flow.setPriority(32767);
-		flow.setIdleTimeout(flowTimeout);
-
-		String flowName = "sos-2-" + conn.getSrcClient().getIPAddr().toString() + 
-				"-" + conn.getSrcPort().toString() + 
-				"-to-" + conn.getDstClient().getIPAddr().toString() +
-				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getSrcAgentSwitch()).getId());
-		conn.addFlow(flowName);
-		log.info("added flow on SW " + switchService.getSwitch(conn.getSrcAgentSwitch()).getId() + flowName);
-	}
-
-	public void pushSOSFlow_3(SOSConnection conn) {
-		OFFactory factory = switchService.getSwitch(conn.getSrcAgentSwitch()).getOFFactory();
-		OFFlowAdd.Builder flow = factory.buildFlowAdd();
-		Match.Builder match = factory.buildMatch();
-		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
-
-		match.setExact(MatchField.IN_PORT, OFPort.LOCAL);
-		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-		match.setExact(MatchField.IPV4_DST, conn.getSrcClient().getIPAddr());
-		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-		match.setExact(MatchField.TCP_DST, conn.getSrcPort());
-
-		if (factory.getVersion().compareTo(OFVersion.OF_12) < 0) {
-			actionList.add(factory.actions().setDlSrc(conn.getDstClient().getMACAddr()));
-			actionList.add(factory.actions().setNwSrc(conn.getDstClient().getIPAddr()));
-			actionList.add(factory.actions().setTpSrc(conn.getDstPort()));
-		} else {
-			actionList.add(factory.actions().setField(factory.oxms().ethSrc(conn.getDstClient().getMACAddr())));
-			actionList.add(factory.actions().setField(factory.oxms().ipv4Src(conn.getDstClient().getIPAddr())));
-			actionList.add(factory.actions().setField(factory.oxms().tcpSrc(conn.getDstPort())));
-		}
-
-		actionList.add(factory.actions().output(SRC_AGENT_OVS_PORT, 0xffFFffFF));
-
-		flow.setBufferId(OFBufferId.NO_BUFFER);
-		flow.setOutPort(OFPort.ANY);
-		flow.setActions(actionList);
-		flow.setMatch(match.build());
-		flow.setPriority(32767);
-		flow.setIdleTimeout(flowTimeout);
-
-		String flowName = "sos-3-" + conn.getSrcClient().getIPAddr().toString() + 
-				"-" + conn.getSrcPort().toString() + 
-				"-to-" + conn.getDstClient().getIPAddr().toString() +
-				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getSrcAgentSwitch()).getId());
-		conn.addFlow(flowName);
-		log.info("added flow on SW " + switchService.getSwitch(conn.getSrcAgentSwitch()).getId() + flowName);
-	}
-
-	public void pushSOSFlow_4(SOSConnection conn) {
-		OFFactory factory = switchService.getSwitch(conn.getSrcNtwkSwitch()).getOFFactory();
-		OFFlowAdd.Builder flow = factory.buildFlowAdd();
-		Match.Builder match = factory.buildMatch();
-		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
-
-		match.setExact(MatchField.IN_PORT, conn.getSrcAgent().getSwitchPort());
-		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-		match.setExact(MatchField.IPV4_DST, conn.getSrcClient().getIPAddr());
-		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-		match.setExact(MatchField.TCP_DST, conn.getSrcPort());
-
-		/*dlsrcAction.setType(OFActionType.SET_DL_SRC);
-		dlsrcAction.setDataLayerAddress(conn.getDstClient().getMACAddr());
-		dlsrcAction.setLength((short) OFActionDataLayerSource.MINIMUM_LENGTH);
-		actionList.add(dlsrcAction); */
-
-		actionList.add(factory.actions().output(conn.getSrcClient().getSwitchPort(), 0xffFFffFF));
-
-		flow.setBufferId(OFBufferId.NO_BUFFER);
-		flow.setOutPort(OFPort.ANY);
-		flow.setActions(actionList);
-		flow.setMatch(match.build());
-		flow.setPriority(32767);
-		flow.setIdleTimeout(flowTimeout);
-
-		String flowName = "sos-4-" + conn.getSrcClient().getIPAddr().toString() + 
-				"-" + conn.getSrcPort().toString() + 
-				"-to-" + conn.getDstClient().getIPAddr().toString() +
-				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getSrcNtwkSwitch()).getId());
-		conn.addFlow(flowName);
-		log.info("added flow on SW " + switchService.getSwitch(conn.getSrcNtwkSwitch()).getId() + flowName);
-	}
-
-	public void pushSOSFlow_5(SOSConnection conn) {
-		OFFactory factory = switchService.getSwitch(conn.getSrcAgentSwitch()).getOFFactory();
-		OFFlowAdd.Builder flow = factory.buildFlowAdd();
-		Match.Builder match = factory.buildMatch();
-		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
-
-		match.setExact(MatchField.IN_PORT, OFPort.LOCAL);
-		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-		match.setExact(MatchField.IPV4_DST, conn.getDstAgent().getIPAddr()); 
-		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-		// Don't care about the TCP port number
-
-		actionList.add(factory.actions().output(SRC_AGENT_OVS_PORT, 0xffFFffFF));
-
-		flow.setBufferId(OFBufferId.NO_BUFFER);
-		flow.setOutPort(OFPort.ANY);
-		flow.setActions(actionList);
-		flow.setMatch(match.build());
-		flow.setPriority(32767);
-		flow.setIdleTimeout(flowTimeout);
-
-		String flowName = "sos-5-" + conn.getSrcClient().getIPAddr().toString() + 
-				"-" + conn.getSrcPort().toString() + 
-				"-to-" + conn.getDstClient().getIPAddr().toString() +
-				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getSrcAgentSwitch()).getId());
-		conn.addFlow(flowName);
-		log.info("added flow on SW " + switchService.getSwitch(conn.getSrcAgentSwitch()).getId() + flowName);
-	}
-
-	public void pushSOSFlow_6(SOSConnection conn) {
-		OFFactory factory = switchService.getSwitch(conn.getSrcNtwkSwitch()).getOFFactory();
-		OFFlowAdd.Builder flow = factory.buildFlowAdd();
-		Match.Builder match = factory.buildMatch();
-		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
-
-		match.setExact(MatchField.IN_PORT, conn.getSrcAgent().getSwitchPort());
-		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-		match.setExact(MatchField.IPV4_DST, conn.getDstAgent().getIPAddr());
-		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-		// Don't care about the TCP port number
-
-		actionList.add(factory.actions().output(conn.getDstAgent().getSwitchPort(), 0xffFFffFF));
-
-		flow.setBufferId(OFBufferId.NO_BUFFER);
-		flow.setOutPort(OFPort.ANY);
-		flow.setActions(actionList);
-		flow.setMatch(match.build());
-		flow.setPriority(32767);
-		flow.setIdleTimeout(flowTimeout);
-
-		String flowName = "sos-6-" + conn.getSrcClient().getIPAddr().toString() + 
-				"-" + conn.getSrcPort().toString() + 
-				"-to-" + conn.getDstClient().getIPAddr().toString() +
-				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getSrcNtwkSwitch()).getId());
-		conn.addFlow(flowName);
-		log.info("added flow on SW " + switchService.getSwitch(conn.getSrcNtwkSwitch()).getId() + flowName);
-	}
-
-	public void pushSOSFlow_6a(SOSConnection conn) {
-		OFFactory factory = switchService.getSwitch(conn.getSrcNtwkSwitch()).getOFFactory();
-		OFFlowAdd.Builder flow = factory.buildFlowAdd();
-		Match.Builder match = factory.buildMatch();
-		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
-
-		match.setExact(MatchField.IN_PORT, conn.getSrcAgent().getSwitchPort());
-		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-		match.setExact(MatchField.IPV4_DST, conn.getDstAgent().getIPAddr());
-		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-		// Don't care about the TCP port number
-
-		actionList.add(factory.actions().output(SRC_NTWK_PORT, 0xffFFffFF));
-
-		flow.setBufferId(OFBufferId.NO_BUFFER);
-		flow.setOutPort(OFPort.ANY);
-		flow.setActions(actionList);
-		flow.setMatch(match.build());
-		flow.setPriority(32767);
-		flow.setIdleTimeout(flowTimeout);
-
-		String flowName = "sos-6a-" + conn.getSrcClient().getIPAddr().toString() + 
-				"-" + conn.getSrcPort().toString() + 
-				"-to-" + conn.getDstClient().getIPAddr().toString() +
-				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getSrcNtwkSwitch()).getId());
-		conn.addFlow(flowName);
-		log.info("added flow on SW " + switchService.getSwitch(conn.getSrcNtwkSwitch()).getId() + flowName);
-	}
-
-	public void pushSOSFlow_6b(SOSConnection conn) {
-		OFFactory factory = switchService.getSwitch(conn.getDstNtwkSwitch()).getOFFactory();
-		OFFlowAdd.Builder flow = factory.buildFlowAdd();
-		Match.Builder match = factory.buildMatch();
-		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
-
-		match.setExact(MatchField.IN_PORT, DST_NTWK_PORT);
-		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-		match.setExact(MatchField.IPV4_DST, conn.getDstAgent().getIPAddr());
-		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-		// Don't care about the TCP port number
-
-		actionList.add(factory.actions().output(conn.getDstAgent().getSwitchPort(), 0xffFFffFF));
-
-		flow.setBufferId(OFBufferId.NO_BUFFER);
-		flow.setOutPort(OFPort.ANY);
-		flow.setActions(actionList);
-		flow.setMatch(match.build());
-		flow.setPriority(32767);
-		flow.setIdleTimeout(flowTimeout);
-
-		String flowName = "sos-6b-" + conn.getSrcClient().getIPAddr().toString() + 
-				"-" + conn.getSrcPort().toString() + 
-				"-to-" + conn.getDstClient().getIPAddr().toString() +
-				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getDstNtwkSwitch()).getId());
-		conn.addFlow(flowName);
-		log.info("added flow on SW " + switchService.getSwitch(conn.getDstNtwkSwitch()).getId() + flowName);
-	}
-
-	public void pushSOSFlow_7(SOSConnection conn) {
-		OFFactory factory = switchService.getSwitch(conn.getDstAgentSwitch()).getOFFactory();
-		OFFlowAdd.Builder flow = factory.buildFlowAdd();
-		Match.Builder match = factory.buildMatch();
-		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
-
-		match.setExact(MatchField.IN_PORT, DST_AGENT_OVS_PORT);
-		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-		match.setExact(MatchField.IPV4_SRC, conn.getSrcAgent().getIPAddr());
-		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-		// Don't care about the TCP port number
-
-		actionList.add(factory.actions().output(OFPort.LOCAL, 0xffFFffFF));
-
-		flow.setBufferId(OFBufferId.NO_BUFFER);
-		flow.setOutPort(OFPort.ANY);
-		flow.setActions(actionList);
-		flow.setMatch(match.build());
-		flow.setPriority(32767);
-		flow.setIdleTimeout(flowTimeout);
-
-		String flowName = "sos-7-" + conn.getSrcClient().getIPAddr().toString() + 
-				"-" + conn.getSrcPort().toString() + 
-				"-to-" + conn.getDstClient().getIPAddr().toString() +
-				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getDstAgentSwitch()).getId());
-		conn.addFlow(flowName);
-		log.info("added flow on SW " + switchService.getSwitch(conn.getDstAgentSwitch()).getId() + flowName);
-	}
-
-	public void pushSOSFlow_8(SOSConnection conn) {
-		OFFactory factory = switchService.getSwitch(conn.getDstAgentSwitch()).getOFFactory();
-		OFFlowAdd.Builder flow = factory.buildFlowAdd();
-		Match.Builder match = factory.buildMatch();
-		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
-
-		match.setExact(MatchField.IN_PORT, OFPort.LOCAL);
-		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-		match.setExact(MatchField.IPV4_DST, conn.getSrcAgent().getIPAddr());
-		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-		// Don't care about the TCP port number
-
-		actionList.add(factory.actions().output(DST_AGENT_OVS_PORT, 0xffFFffFF));
-
-		flow.setBufferId(OFBufferId.NO_BUFFER);
-		flow.setOutPort(OFPort.ANY);
-		flow.setActions(actionList);
-		flow.setMatch(match.build());
-		flow.setPriority(32767);
-		flow.setIdleTimeout(flowTimeout);
-
-		String flowName = "sos-8-" + conn.getSrcClient().getIPAddr().toString() + 
-				"-" + conn.getSrcPort().toString() + 
-				"-to-" + conn.getDstClient().getIPAddr().toString() +
-				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getDstAgentSwitch()).getId());
-		conn.addFlow(flowName);
-		log.info("added flow on SW " + switchService.getSwitch(conn.getDstAgentSwitch()).getId() + flowName);
-	} 
-
-	public void pushSOSFlow_9(SOSConnection conn) {
-		OFFactory factory = switchService.getSwitch(conn.getDstNtwkSwitch()).getOFFactory();
-		OFFlowAdd.Builder flow = factory.buildFlowAdd();
-		Match.Builder match = factory.buildMatch();
-		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
-
-		match.setExact(MatchField.IN_PORT, conn.getDstAgent().getSwitchPort());
-		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-		match.setExact(MatchField.IPV4_DST, conn.getSrcAgent().getIPAddr());
-		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-		// Don't care about the TCP port number
-
-		actionList.add(factory.actions().output(conn.getSrcAgent().getSwitchPort(), 0xffFFffFF));
-
-		flow.setBufferId(OFBufferId.NO_BUFFER);
-		flow.setOutPort(OFPort.ANY);
-		flow.setActions(actionList);
-		flow.setMatch(match.build());
-		flow.setPriority(32767);
-		flow.setIdleTimeout(flowTimeout);
-
-		String flowName = "sos-d9-" + conn.getSrcClient().getIPAddr().toString() + 
-				"-" + conn.getSrcPort().toString() + 
-				"-to-" + conn.getDstClient().getIPAddr().toString() +
-				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getDstNtwkSwitch()).getId());
-		conn.addFlow(flowName);
-		log.info("added flow on SW " + switchService.getSwitch(conn.getDstNtwkSwitch()).getId() + flowName);
-	}
-
-	public void pushSOSFlow_9a(SOSConnection conn) {
-		OFFactory factory = switchService.getSwitch(conn.getDstNtwkSwitch()).getOFFactory();
-		OFFlowAdd.Builder flow = factory.buildFlowAdd();
-		Match.Builder match = factory.buildMatch();
-		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
-
-		match.setExact(MatchField.IN_PORT, conn.getDstAgent().getSwitchPort());
-		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-		match.setExact(MatchField.IPV4_DST, conn.getSrcAgent().getIPAddr());
-		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-		// Don't care about the TCP port number
-
-		actionList.add(factory.actions().output(DST_NTWK_PORT, 0xffFFffFF));
-
-		flow.setBufferId(OFBufferId.NO_BUFFER);
-		flow.setOutPort(OFPort.ANY);
-		flow.setActions(actionList);
-		flow.setMatch(match.build());
-		flow.setPriority(32767);
-		flow.setIdleTimeout(flowTimeout);
-
-		String flowName = "sos-9a-" + conn.getSrcClient().getIPAddr().toString() + 
-				"-" + conn.getSrcPort().toString() + 
-				"-to-" + conn.getDstClient().getIPAddr().toString() +
-				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getDstNtwkSwitch()).getId());
-		conn.addFlow(flowName);
-		log.info("added flow on SW " + switchService.getSwitch(conn.getDstNtwkSwitch()).getId() + flowName);
-	}
-
-	public void pushSOSFlow_9b(SOSConnection conn) {
-		OFFactory factory = switchService.getSwitch(conn.getSrcNtwkSwitch()).getOFFactory();
-		OFFlowAdd.Builder flow = factory.buildFlowAdd();
-		Match.Builder match = factory.buildMatch();
-		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
-
-		match.setExact(MatchField.IN_PORT, SRC_NTWK_PORT);
-		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-		match.setExact(MatchField.IPV4_DST, conn.getSrcAgent().getIPAddr());
-		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-		// Don't care about the TCP port number
-
-		actionList.add(factory.actions().output(conn.getSrcAgent().getSwitchPort(), 0xffFFffFF));
-
-		flow.setBufferId(OFBufferId.NO_BUFFER);
-		flow.setOutPort(OFPort.ANY);
-		flow.setActions(actionList);
-		flow.setMatch(match.build());
-		flow.setPriority(32767);
-		flow.setIdleTimeout(flowTimeout);
-
-		String flowName = "sos-9b-" + conn.getSrcClient().getIPAddr().toString() + 
-				"-" + conn.getSrcPort().toString() + 
-				"-to-" + conn.getDstClient().getIPAddr().toString() +
-				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getSrcNtwkSwitch()).getId());
-		conn.addFlow(flowName);
-		log.info("added flow on SW " + switchService.getSwitch(conn.getSrcNtwkSwitch()).getId() + flowName);
-	}
-
-
-	public void pushSOSFlow_10(SOSConnection conn) {
-		OFFactory factory = switchService.getSwitch(conn.getSrcAgentSwitch()).getOFFactory();
-		OFFlowAdd.Builder flow = factory.buildFlowAdd();
-		Match.Builder match = factory.buildMatch();
-		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
-
-		match.setExact(MatchField.IN_PORT, SRC_AGENT_OVS_PORT);
-		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-		match.setExact(MatchField.IPV4_SRC, conn.getDstAgent().getIPAddr());
-		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-		// Don't care about the TCP port number
-
-		actionList.add(factory.actions().output(OFPort.LOCAL, 0xffFFffFF));
-
-		flow.setBufferId(OFBufferId.NO_BUFFER);
-		flow.setOutPort(OFPort.ANY);
-		flow.setActions(actionList);
-		flow.setMatch(match.build());
-		flow.setPriority(32767);
-		flow.setIdleTimeout(flowTimeout);
-
-		String flowName = "sos-10-" + conn.getSrcClient().getIPAddr().toString() + 
-				"-" + conn.getSrcPort().toString() + 
-				"-to-" + conn.getDstClient().getIPAddr().toString() +
-				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getSrcAgentSwitch()).getId());
-		conn.addFlow(flowName);
-		log.info("added flow on SW " + switchService.getSwitch(conn.getSrcAgentSwitch()).getId() + flowName);
-	} 
-
-	public void pushSOSFlow_11(SOSConnection conn) {
-		OFFactory factory = switchService.getSwitch(conn.getDstAgentSwitch()).getOFFactory();
-		OFFlowAdd.Builder flow = factory.buildFlowAdd();
-		Match.Builder match = factory.buildMatch();
-		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
-
-		match.setExact(MatchField.IN_PORT, OFPort.LOCAL);
-		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-		match.setExact(MatchField.IPV4_DST, conn.getDstClient().getIPAddr());
-		match.setExact(MatchField.TCP_DST, conn.getDstPort());
-		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-
-		if (factory.getVersion().compareTo(OFVersion.OF_12) < 0) {
-			actionList.add(factory.actions().setDlSrc(conn.getSrcClient().getMACAddr()));
-			actionList.add(factory.actions().setNwSrc(conn.getSrcClient().getIPAddr()));
-			actionList.add(factory.actions().setTpSrc(conn.getSrcPort()));
-		} else {
-			actionList.add(factory.actions().setField(factory.oxms().ethSrc(conn.getSrcClient().getMACAddr())));
-			actionList.add(factory.actions().setField(factory.oxms().ipv4Src(conn.getSrcClient().getIPAddr())));
-			actionList.add(factory.actions().setField(factory.oxms().tcpSrc(conn.getSrcPort())));
-		}
-
-		actionList.add(factory.actions().output(DST_AGENT_OVS_PORT, 0xffFFffFF));
-
-		flow.setBufferId(OFBufferId.NO_BUFFER);
-		flow.setOutPort(OFPort.ANY);
-		flow.setActions(actionList);
-		flow.setMatch(match.build());
-		flow.setPriority(32767);
-		flow.setIdleTimeout(flowTimeout);
-
-		String flowName = "sos-11-" + conn.getSrcClient().getIPAddr().toString() + 
-				"-" + conn.getSrcPort().toString() + 
-				"-to-" + conn.getDstClient().getIPAddr().toString() +
-				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getDstAgentSwitch()).getId());
-		conn.addFlow(flowName);
-		log.info("added flow on SW " + switchService.getSwitch(conn.getDstAgentSwitch()).getId() + flowName);
-	}
-
-	public void pushSOSFlow_12(SOSConnection conn) {
-		OFFactory factory = switchService.getSwitch(conn.getDstNtwkSwitch()).getOFFactory();
-		OFFlowAdd.Builder flow = factory.buildFlowAdd();
-		Match.Builder match = factory.buildMatch();
-		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
-
-		match.setExact(MatchField.IN_PORT, conn.getDstAgent().getSwitchPort());
-		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-		match.setExact(MatchField.IPV4_DST, conn.getDstClient().getIPAddr());
-		match.setExact(MatchField.TCP_DST, conn.getDstPort());
-		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-
-		/*dlsrcAction.setType(OFActionType.SET_DL_SRC);
-		dlsrcAction.setDataLayerAddress(conn.getSrcClient().getMACAddr());
-		dlsrcAction.setLength((short) OFActionDataLayerSource.MINIMUM_LENGTH);
-		actionList.add(dlsrcAction); */
-
-		actionList.add(factory.actions().output(conn.getDstClient().getSwitchPort(), 0xffFFffFF));
-
-		flow.setBufferId(OFBufferId.NO_BUFFER);
-		flow.setOutPort(OFPort.ANY);
-		flow.setActions(actionList);
-		flow.setMatch(match.build());
-		flow.setPriority(32767);
-		flow.setIdleTimeout(flowTimeout);
-
-		String flowName = "sos-12-" + conn.getSrcClient().getIPAddr().toString() + 
-				"-" + conn.getSrcPort().toString() + 
-				"-to-" + conn.getDstClient().getIPAddr().toString() +
-				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getDstNtwkSwitch()).getId());
-		conn.addFlow(flowName);
-		log.info("added flow on SW " + switchService.getSwitch(conn.getDstNtwkSwitch()).getId() + flowName);
-	}
-
-	public void pushSOSFlow_13(SOSConnection conn) {
-		OFFactory factory = switchService.getSwitch(conn.getDstNtwkSwitch()).getOFFactory();
-		OFFlowAdd.Builder flow = factory.buildFlowAdd();
-		Match.Builder match = factory.buildMatch();
-		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
-
-		match.setExact(MatchField.IN_PORT, conn.getDstClient().getSwitchPort());
-		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-		match.setExact(MatchField.IPV4_SRC, conn.getDstClient().getIPAddr());
-		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-		match.setExact(MatchField.TCP_SRC, conn.getDstPort());
-
-		/*dldestAction.setType(OFActionType.SET_DL_DST);
-		dldestAction.setDataLayerAddress(conn.getDstAgent().getMACAddr());
-		dldestAction.setLength((short) OFActionDataLayerDestination.MINIMUM_LENGTH);
-		actionList.add(dldestAction);*/
-
-		actionList.add(factory.actions().output(conn.getDstAgent().getSwitchPort(), 0xffFFffFF));
-
-		flow.setBufferId(OFBufferId.NO_BUFFER);
-		flow.setOutPort(OFPort.ANY);
-		flow.setActions(actionList);
-		flow.setMatch(match.build());
-		flow.setPriority(32767);
-		flow.setIdleTimeout(flowTimeout);
-
-		String flowName = "sos-13-" + conn.getSrcClient().getIPAddr().toString() + 
-				"-" + conn.getSrcPort().toString() + 
-				"-to-" + conn.getDstClient().getIPAddr().toString() +
-				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getDstNtwkSwitch()).getId());
-		conn.addFlow(flowName);
-		log.info("added flow on SW " + switchService.getSwitch(conn.getDstNtwkSwitch()).getId() + flowName);
-	}
-
-	public void pushSOSFlow_14(SOSConnection conn) {
-		OFFactory factory = switchService.getSwitch(conn.getDstAgentSwitch()).getOFFactory();
-		OFFlowAdd.Builder flow = factory.buildFlowAdd();
-		Match.Builder match = factory.buildMatch();
-		ArrayList<OFAction> actionList = new ArrayList<OFAction>();
-
-		match.setExact(MatchField.IN_PORT, DST_AGENT_OVS_PORT);
-		match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-		match.setExact(MatchField.IPV4_SRC, conn.getDstClient().getIPAddr());
-		match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-		match.setExact(MatchField.TCP_SRC, conn.getDstPort());
-
-		if (factory.getVersion().compareTo(OFVersion.OF_12) < 0) {
-			actionList.add(factory.actions().setDlDst(conn.getDstAgent().getMACAddr()));
-			actionList.add(factory.actions().setNwDst(conn.getDstAgent().getIPAddr()));
-			actionList.add(factory.actions().setTpDst(conn.getDstAgentL4Port()));
-		} else {
-			actionList.add(factory.actions().setField(factory.oxms().ethDst(conn.getDstAgent().getMACAddr())));
-			actionList.add(factory.actions().setField(factory.oxms().ipv4Dst(conn.getDstAgent().getIPAddr())));
-			actionList.add(factory.actions().setField(factory.oxms().tcpDst(conn.getDstAgentL4Port())));
-		}
-
-		actionList.add(factory.actions().output(OFPort.LOCAL, 0xffFFffFF));
-
-		flow.setBufferId(OFBufferId.NO_BUFFER);
-		flow.setOutPort(OFPort.ANY);
-		flow.setActions(actionList);
-		flow.setMatch(match.build());
-		flow.setPriority(32767);
-		flow.setIdleTimeout(flowTimeout);
-
-		String flowName = "sos-14-" + conn.getSrcClient().getIPAddr().toString() + 
-				"-" + conn.getSrcPort().toString() + 
-				"-to-" + conn.getDstClient().getIPAddr().toString() +
-				"-" + conn.getDstPort().toString();
-		sfp.addFlow(flowName, flow.build(), switchService.getSwitch(conn.getDstAgentSwitch()).getId());
-		conn.addFlow(flowName);
-		log.info("added flow on SW " + switchService.getSwitch(conn.getDstAgentSwitch()).getId() + flowName);
-	}	
-
-
 
 	@Override
 	public void switchAdded(DatapathId dpid) {
-		IOFSwitch sw = switchService.getSwitch(dpid);
-		// For now, let's assume we have two DPIDs as in our config file.
-		if (SRC_NTWK_SWITCH_DPID.equals(sw.getId())) {
-			SRC_NTWK_SWITCH = new SOSSwitch(sw);
-			SRC_NTWK_SWITCH.addClient(SRC_CLIENT);
-			SRC_NTWK_SWITCH.setLocalAgent(SRC_AGENT);
-			log.debug("Source NTWK switch set and configured!");
-		}
-		// Not an else-if... we may want two agents on a single switch for whatever reason
-		if (DST_NTWK_SWITCH_DPID.equals(sw.getId())) {
-			DST_NTWK_SWITCH = new SOSSwitch(sw);
-			DST_NTWK_SWITCH.addClient(DST_CLIENT);
-			DST_NTWK_SWITCH.setLocalAgent(DST_AGENT);
-			log.debug("Destination NTWK switch set and configured!");
-		}
-		// For now, let's assume we have two DPIDs as in our config file.
-		if (SRC_AGENT_SWITCH_DPID.equals(sw.getId())) {
-			SRC_AGENT_SWITCH = new SOSSwitch(sw);
-			SRC_AGENT_SWITCH.addClient(SRC_CLIENT);
-			SRC_AGENT_SWITCH.setLocalAgent(SRC_AGENT);
-			log.debug("Source AGENT switch set and configured!");
-		}
-		// Not an else-if... we may want two agents on a single switch for whatever reason
-		if (DST_AGENT_SWITCH_DPID.equals(sw.getId())) {
-			DST_AGENT_SWITCH = new SOSSwitch(sw);
-			DST_AGENT_SWITCH.addClient(DST_CLIENT);
-			DST_AGENT_SWITCH.setLocalAgent(DST_AGENT);
-			log.debug("Destination AGENT switch set and configured!");
-		}
-
-		/* 
-		 * In the future, we'll do somthing like this...
-		for (SOSSwitch sosSw : SOS_SWITCHES) {
-			if (sosSw.getSwitch() == sw) {
-				// If we find it, then it's already there, so return w/o adding
-				return;
-			}
-		}
-		// We must not have found it, so add it
-		SOS_SWITCHES.add(new SOSSwitch(sw));
-		 */
+		
 	}
 
 	@Override
 	public void switchRemoved(DatapathId dpid) {
-		// For now, let's assume we only have two DPIDs as in our config file.
-		IOFSwitch sw = switchService.getSwitch(dpid);
-		if (SRC_NTWK_SWITCH_DPID.equals(sw.getId())) {
-			SRC_NTWK_SWITCH.removeClient(SRC_CLIENT);
-			SRC_NTWK_SWITCH = null;
-		} else if (DST_NTWK_SWITCH_DPID.equals(sw.getId())) {
-			DST_NTWK_SWITCH.removeClient(DST_CLIENT);
-			DST_NTWK_SWITCH = null;
-		} else if (SRC_AGENT_SWITCH_DPID.equals(sw.getId())) {
-			SRC_AGENT_SWITCH.removeClient(SRC_CLIENT);
-			SRC_AGENT_SWITCH = null;
-		} else if (DST_AGENT_SWITCH_DPID.equals(sw.getId())) {
-			DST_AGENT_SWITCH.removeClient(DST_CLIENT);
-			DST_AGENT_SWITCH = null;
-		}
-
-		/*
-		 *  In the future, we'll do something like this...
-		for (SOSSwitch sosSw : SOS_SWITCHES) {
-			if (sosSw.getSwitch() == sw) {
-				// Do something to remove all Agent and Client associations to this switch instance
-				// ...and unfortunately terminate any SOS connections as well...
-
-				// Now remove the switch from our list
-				SOS_SWITCHES.remove(sosSw);
-			}
-		}
-		 */
+		
 	}
 
 	@Override
@@ -1430,5 +741,75 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 
 	@Override
 	public void switchChanged(DatapathId switchId) {
+	}
+
+	/* ****************************
+	 * ISOSService implementation *
+	 * ****************************/
+	
+	@Override
+	public SOSReturnCode addAgent(SOSAgent agent) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public SOSReturnCode removeAgent(SOSAgent agent) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public SOSReturnCode addClient(SOSClient client) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public SOSReturnCode removeClient(SOSClient client) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public SOSReturnCode enable() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public SOSReturnCode disable() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public SOSStatistics getStatistics() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public SOSReturnCode setFlowTimeouts(int hardSeconds, int idleSeconds) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public SOSReturnCode setNumParallelConnections(int num) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public SOSReturnCode setBufferSize(int bytes) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public SOSReturnCode setQueueCapacity(int packets) {
+		// TODO Auto-generated method stub
+		return null;
 	}
 }

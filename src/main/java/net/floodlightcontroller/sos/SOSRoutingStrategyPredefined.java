@@ -2,6 +2,8 @@ package net.floodlightcontroller.sos;
 
 import org.projectfloodlight.openflow.types.DatapathId;
 
+import sun.reflect.generics.reflectiveObjects.NotImplementedException;
+
 public class SOSRoutingStrategyPredefined implements ISOSRoutingStrategy {
 
 	private DatapathId redirectionSwitch;
@@ -14,7 +16,7 @@ public class SOSRoutingStrategyPredefined implements ISOSRoutingStrategy {
 	}
 	
 	@Override
-	public void pushRoute(SOSRoute route, int timeout) {
-		
+	public void pushRoute(SOSRoute route, SOSConnection conn) {
+		throw new NotImplementedException();
 	}
 }
