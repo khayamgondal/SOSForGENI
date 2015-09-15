@@ -29,7 +29,8 @@ public class SOSRoutingStrategyInterAgent implements ISOSRoutingStrategy {
 			throw new IllegalArgumentException("Only route type agent-to-agent is supported.");
 		}
 		
-		int flowCount = 1;
+		int flowCount = conn.getFlowNames().size() + 1;
+		String flowNamePrefix = "sos-ia-" + conn.getName() + "-#";
 		Set<String> flows = new HashSet<String>();
 		List<NodePortTuple> path = route.getRoute().getPath();
 
@@ -62,10 +63,10 @@ public class SOSRoutingStrategyInterAgent implements ISOSRoutingStrategy {
 			flow.setPriority(32767);
 			flow.setIdleTimeout(conn.getFlowTimeout());
 
-			String flowName = "sos-inter-agent-" + flowCount++; //TODO make name more specific for this client...maybe make a name-creation class?
+			String flowName = flowNamePrefix + flowCount++;
 			SOS.sfp.addFlow(flowName, flow.build(), SOS.switchService.getSwitch(in.getNodeId()).getId());
 			flows.add(flowName);
-			log.info("added flow on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId() + flowName);
+			log.info("Added inter-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow);
 			
 			flow = factory.buildFlowAdd();
 			match = factory.buildMatch();
@@ -90,12 +91,16 @@ public class SOSRoutingStrategyInterAgent implements ISOSRoutingStrategy {
 			flow.setPriority(32767);
 			flow.setIdleTimeout(conn.getFlowTimeout());
 
-			flowName = "sos-inter-agent-" + flowCount++; //TODO make name more specific for this client...maybe make a name-creation class?
+			flowName = flowNamePrefix + flowCount++;
 			SOS.sfp.addFlow(flowName, flow.build(), SOS.switchService.getSwitch(in.getNodeId()).getId());
 			flows.add(flowName);
-			log.info("added flow on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId() + flowName);
+			log.info("Added inter-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow);
 		}
 		
+		/* 
+		 * Update the list of flows names for this connection
+		 * s.t. we can remove them later if needed.
+		 */
 		conn.addFlows(flows);
 	}
 }

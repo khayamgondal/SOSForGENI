@@ -30,8 +30,8 @@ public class AgentResource extends ServerResource {
 	protected static final String STR_DATA_PORT = "data-port";
 	protected static final String STR_CONTROL_PORT = "control-port";
 
-	@Put("json")
-	@Post("json")
+	@Put
+	@Post
 	public Map<String, String> handleAgent(String json) {
 		ISOSService sosService = (ISOSService) getContext().getAttributes().get(ISOSService.class.getCanonicalName());
 		String operation = ((String) getRequestAttributes().get(SOSWebRoutable.STR_OPERATION)).toLowerCase().trim();

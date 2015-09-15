@@ -48,7 +48,8 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 			throw new IllegalArgumentException("Only route types client-to-agent or server-to-agent are supported.");
 		}
 
-		int flowCount = 1;
+		int flowCount = conn.getFlowNames().size() + 1;
+		String flowNamePrefix = "sos-aa-" + conn.getName() + "-#";
 		Set<String> flows = new HashSet<String>();
 		List<NodePortTuple> path = route.getRoute().getPath();
 
@@ -98,10 +99,10 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				flow.setIdleTimeout(conn.getFlowTimeout());
 
 				/* This flow handles both flow #1 and flow #13 in the basic SOS diagram */
-				String flowName = "sos-" + flowCount++; //TODO make name more specific for this client...maybe make a name-creation class?
+				String flowName = flowNamePrefix + flowCount++;
 				SOS.sfp.addFlow(flowName, flow.build(), SOS.switchService.getSwitch(in.getNodeId()).getId());
 				flows.add(flowName);
-				log.info("added flow on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId() + flowName);
+				log.info("Added to/from-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow);
 
 				/* ***** Start reverse redirection flow TODO can we reuse code anyplace here? ***** */
 				flow = factory.buildFlowAdd();
@@ -127,13 +128,13 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				if (rewriteMacUponRedirection) {
 					if (route.getSrcDevice() instanceof SOSClient) {
 						if (factory.getVersion().compareTo(OFVersion.OF_12) < 0) {
-							actionList.add(factory.actions().setDlSrc(conn.getServer().getMACAddr()));
+							actionList.add(factory.actions().setDlSrc(conn.getServer().getMACAddr())); /* pretend it's coming from server */
 						} else {
 							actionList.add(factory.actions().setField(factory.oxms().ethSrc(conn.getServer().getMACAddr())));
 						}
 					} else {
 						if (factory.getVersion().compareTo(OFVersion.OF_12) < 0) {
-							actionList.add(factory.actions().setDlSrc(conn.getClient().getMACAddr()));
+							actionList.add(factory.actions().setDlSrc(conn.getClient().getMACAddr())); /* pretend it's coming from client */
 						} else {
 							actionList.add(factory.actions().setField(factory.oxms().ethSrc(conn.getClient().getMACAddr())));
 						}
@@ -148,10 +149,10 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				flow.setPriority(32767);
 				flow.setIdleTimeout(conn.getFlowTimeout());
 
-				flowName = "sos-" + flowCount++;
+				flowName = flowNamePrefix + flowCount++;
 				SOS.sfp.addFlow(flowName, flow.build(), SOS.switchService.getSwitch(in.getNodeId()).getId());
 				flows.add(flowName);
-				log.info("added flow on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId() + flowName);
+				log.info("Added to/from-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow);
 			} else if (out.equals(route.getRouteLastHop())) { /* handles flows 2, 3, 11, 14 */
 				/* Perform rewrite here */
 				OFFactory factory = SOS.switchService.getSwitch(in.getNodeId()).getOFFactory();
@@ -192,10 +193,10 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				flow.setPriority(32767);
 				flow.setIdleTimeout(conn.getFlowTimeout());
 
-				String flowName = "sos-" + flowCount++;
+				String flowName = flowNamePrefix + flowCount++;
 				SOS.sfp.addFlow(flowName, flow.build(), SOS.switchService.getSwitch(in.getNodeId()).getId());
 				flows.add(flowName);
-				log.info("added flow on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId() + flowName);
+				log.info("Added to/from-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow);
 
 				/* Reverse rewrite flow */
 				flow = factory.buildFlowAdd();
@@ -215,7 +216,7 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				if (route.getSrcDevice() instanceof SOSClient) {
 					if (factory.getVersion().compareTo(OFVersion.OF_12) < 0) {
 						if (!rewriteMacUponRedirection) { 
-							actionList.add(factory.actions().setDlSrc(conn.getServer().getMACAddr()));
+							actionList.add(factory.actions().setDlSrc(conn.getServer().getMACAddr())); /* pretend it came from server */
 						}
 						actionList.add(factory.actions().setNwSrc(conn.getServer().getIPAddr()));
 						actionList.add(factory.actions().setTpSrc(conn.getServer().getTcpPort()));
@@ -229,7 +230,7 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				} else {
 					if (factory.getVersion().compareTo(OFVersion.OF_12) < 0) {
 						if (!rewriteMacUponRedirection) { 
-							actionList.add(factory.actions().setDlSrc(conn.getClient().getMACAddr()));
+							actionList.add(factory.actions().setDlSrc(conn.getClient().getMACAddr())); /* pretend it came from client */
 						}
 						actionList.add(factory.actions().setNwSrc(conn.getClient().getIPAddr()));
 						actionList.add(factory.actions().setTpSrc(conn.getClient().getTcpPort()));
@@ -251,10 +252,10 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				flow.setPriority(32767);
 				flow.setIdleTimeout(conn.getFlowTimeout());
 
-				flowName = "sos-" + flowCount++;
+				flowName = flowNamePrefix + flowCount++;
 				SOS.sfp.addFlow(flowName, flow.build(), SOS.switchService.getSwitch(in.getNodeId()).getId());
 				flows.add(flowName);
-				log.info("added flow on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId() + flowName);
+				log.info("Added to/from-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow);
 			} else {
 				/* Simply forward to next hop from here */
 				OFFactory factory = SOS.switchService.getSwitch(in.getNodeId()).getOFFactory();
@@ -264,15 +265,28 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 
 				match.setExact(MatchField.IN_PORT, in.getPortId());
 				match.setExact(MatchField.ETH_SRC, route.getSrcDevice().getMACAddr());
-				match.setExact(MatchField.ETH_DST, route.getDstDevice().getMACAddr());
-				match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-				match.setExact(MatchField.IPV4_SRC, route.getSrcDevice().getIPAddr());
-				match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-				if (route.getSrcDevice() instanceof SOSClient) {
-					match.setExact(MatchField.TCP_SRC, ((SOSClient) route.getSrcDevice()).getTcpPort());
+				if (rewriteMacUponRedirection) {
+					match.setExact(MatchField.ETH_DST, route.getDstDevice().getMACAddr()); /* already changed to agent */
 				} else {
-					match.setExact(MatchField.TCP_SRC, ((SOSServer) route.getSrcDevice()).getTcpPort());
+					if (route.getSrcDevice() instanceof SOSClient) {
+						match.setExact(MatchField.ETH_DST, conn.getServer().getMACAddr()); /* will change at last hop */
+					} else {
+						match.setExact(MatchField.ETH_DST, conn.getClient().getMACAddr()); /* on server side now */
+					}
 				}
+				match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
+				match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
+				match.setExact(MatchField.IPV4_SRC, route.getSrcDevice().getIPAddr());
+				if (route.getSrcDevice() instanceof SOSClient) {
+					match.setExact(MatchField.IPV4_DST, conn.getServer().getIPAddr()); /* will change at last hop */
+					match.setExact(MatchField.TCP_SRC, conn.getClient().getTcpPort());
+					match.setExact(MatchField.TCP_DST, conn.getServer().getTcpPort()); /* will change at last hop */
+				} else {
+					match.setExact(MatchField.IPV4_DST, conn.getClient().getIPAddr()); /* will change at last hop */
+					match.setExact(MatchField.TCP_SRC, conn.getServer().getTcpPort());
+					match.setExact(MatchField.TCP_DST, conn.getClient().getTcpPort()); /* will change at last hop */
+				}
+				
 				actionList.add(factory.actions().output(out.getPortId(), 0xffFFffFF));
 
 				flow.setBufferId(OFBufferId.NO_BUFFER);
@@ -282,10 +296,10 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				flow.setPriority(32767);
 				flow.setIdleTimeout(conn.getFlowTimeout());
 
-				String flowName = "sos-" + flowCount++;
+				String flowName = flowNamePrefix + flowCount++;
 				SOS.sfp.addFlow(flowName, flow.build(), SOS.switchService.getSwitch(in.getNodeId()).getId());
 				flows.add(flowName);
-				log.info("added flow on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId() + flowName);
+				log.info("Added to/from-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow);
 				
 				/* And now do the reverse flow */
 				flow = factory.buildFlowAdd();
@@ -294,15 +308,28 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 
 				match.setExact(MatchField.IN_PORT, out.getPortId());
 				match.setExact(MatchField.ETH_DST, route.getSrcDevice().getMACAddr());
-				match.setExact(MatchField.ETH_SRC, route.getDstDevice().getMACAddr());
-				match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
-				match.setExact(MatchField.IPV4_DST, route.getSrcDevice().getIPAddr());
-				match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
-				if (route.getDstDevice() instanceof SOSClient) {
-					match.setExact(MatchField.TCP_DST, ((SOSClient) route.getSrcDevice()).getTcpPort());
+				if (rewriteMacUponRedirection) {
+					match.setExact(MatchField.ETH_SRC, route.getDstDevice().getMACAddr()); /* will change from agent on first hop */
 				} else {
-					match.setExact(MatchField.TCP_DST, ((SOSServer) route.getSrcDevice()).getTcpPort());
+					if (route.getSrcDevice() instanceof SOSClient) {
+						match.setExact(MatchField.ETH_SRC, conn.getServer().getMACAddr()); /* already changed from agent; on client side, set from server */
+					} else {
+						match.setExact(MatchField.ETH_SRC, conn.getClient().getMACAddr()); /* on server side, set from client */
+					}
 				}
+				match.setExact(MatchField.ETH_TYPE, EthType.IPv4);
+				match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
+				match.setExact(MatchField.IPV4_DST, route.getSrcDevice().getIPAddr());
+				if (route.getSrcDevice() instanceof SOSClient) {
+					match.setExact(MatchField.IPV4_SRC, conn.getServer().getIPAddr()); /* already rewritten on last hop */
+					match.setExact(MatchField.TCP_SRC, conn.getServer().getTcpPort()); /* pretend from server */
+					match.setExact(MatchField.TCP_DST, conn.getClient().getTcpPort());
+				} else {
+					match.setExact(MatchField.IPV4_SRC, conn.getClient().getIPAddr()); /* same here */
+					match.setExact(MatchField.TCP_SRC, conn.getClient().getTcpPort()); /* pretend from client */
+					match.setExact(MatchField.TCP_DST, conn.getServer().getTcpPort());
+				}
+
 				actionList.add(factory.actions().output(in.getPortId(), 0xffFFffFF));
 
 				flow.setBufferId(OFBufferId.NO_BUFFER);
@@ -312,10 +339,10 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				flow.setPriority(32767);
 				flow.setIdleTimeout(conn.getFlowTimeout());
 
-				flowName = "sos-" + flowCount++;
+				flowName = flowNamePrefix + flowCount++;
 				SOS.sfp.addFlow(flowName, flow.build(), SOS.switchService.getSwitch(in.getNodeId()).getId());
 				flows.add(flowName);
-				log.info("added flow on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId() + flowName);
+				log.info("Added to/from-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow);
 			}
 		}
 		conn.addFlows(flows);

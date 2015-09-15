@@ -3,6 +3,7 @@ package net.floodlightcontroller.sos;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -78,7 +79,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 
 	private static SOSConnections sosConnections;
 	private static Set<SOSAgent> agents;
-	
+
 	private static boolean enabled;
 
 	/* These needs to be constant b/t agents, thus we'll keep them global for now */
@@ -125,7 +126,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			agentNumParallelSockets = Integer.parseInt(configOptions.get("parallel-tcp-sockets"));
 			flowTimeout = Short.parseShort(configOptions.get("flow-timeout"));
 			enabled = Boolean.parseBoolean(configOptions.get("enabled") != null ? configOptions.get("enabled") : "true"); /* enabled by default if not present --> listing module is enabling */
-			
+
 			//agentControlPort = TransportPort.of(Integer.parseInt(configOptions.get("agent-msg-port")));
 			//agentDataPort = TransportPort.of(Integer.parseInt(configOptions.get("agent-tcp-port")));
 
@@ -137,12 +138,17 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 
 	@Override
 	public Collection<Class<? extends IFloodlightService>> getModuleServices() {
-		return null;
+		Collection<Class<? extends IFloodlightService>> l =
+				new ArrayList<Class<? extends IFloodlightService>>();
+		l.add(ISOSService.class);
+		return l;
 	}
 
 	@Override
 	public Map<Class<? extends IFloodlightService>, IFloodlightService> getServiceImpls() {
-		return null;
+		Map<Class<? extends IFloodlightService>, IFloodlightService> m = new HashMap<Class<? extends IFloodlightService>, IFloodlightService>();
+		m.put(ISOSService.class, this);
+		return m;
 	}
 
 	@Override
@@ -443,7 +449,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			 */
 			log.trace("SOS enabled. Inspecting packet to see if it's a candidate for SOS.");
 		}
-		
+
 		OFPacketIn pi = (OFPacketIn) msg;
 
 		Ethernet l2 = IFloodlightProviderService.bcStore.get(cntx,
@@ -460,7 +466,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 				log.debug("Got TCP Packet on port " + (pi.getVersion().compareTo(OFVersion.OF_12) < 0 ? 
 						pi.getInPort().toString() : 
 							pi.getMatch().get(MatchField.IN_PORT).toString()) + " of switch " + sw.getId());
-				
+
 				TCP l4 = (TCP) l3.getPayload();
 				/* 
 				 * If this source IP and source port (or destination IP and destination port)
@@ -479,7 +485,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 				if (packetStatus == SOSPacketStatus.INACTIVE_REGISTERED){
 					/* Process new TCP SOS session */
 					log.debug("Packet status was inactive but registered. Proceed with SOS.");
-					
+
 					IDevice srcDevice = IDeviceService.fcStore.get(cntx, IDeviceService.CONTEXT_SRC_DEVICE);
 					IDevice dstDevice = IDeviceService.fcStore.get(cntx, IDeviceService.CONTEXT_DST_DEVICE);
 
@@ -497,11 +503,14 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 						log.debug("Destination device is {}", dstDevice);
 					}
 
-					/* Init Source Agent/Client */
+					/* Init Agent/Client */
 					SOSClient client = new SOSClient(l3.getSourceAddress(), l4.getSourcePort(), l2.getSourceMACAddress());
 					SOSRoute clientRoute = routeToNeighborhoodAgent(client, srcDevice.getAttachmentPoints(), IPv4Address.NONE);
 					if (clientRoute == null) {
+						log.error("Could not compute route from client {} to neighborhood agent. Report SOS bug", client);
 						return Command.STOP;
+					} else {
+						log.debug("Client-to-agent route {}", clientRoute);
 					}
 
 					/* Init Agent/Server */
@@ -509,10 +518,19 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 					SOSRoute serverRoute = routeToNeighborhoodAgent(server, dstDevice.getAttachmentPoints(), 
 							clientRoute.getRoute() != null ? clientRoute.getDstDevice().getIPAddr() : IPv4Address.NONE);
 					if (serverRoute == null) {
+						log.error("Could not compute route from server {} to neighborhood agent. Report SOS bug", server);
 						return Command.STOP;
+					} else {
+						log.debug("Server-to-agent route {}", serverRoute);
 					}
 
-					SOSRoute interAgentRoute = routeBetweenAgents((SOSAgent) clientRoute.getDstDevice(), (SOSAgent) clientRoute.getDstDevice());
+					SOSRoute interAgentRoute = routeBetweenAgents((SOSAgent) clientRoute.getDstDevice(), (SOSAgent) serverRoute.getDstDevice());
+					if (interAgentRoute == null) {
+						log.error("Could not compute route from agent {} to agent {}. Report SOS bug", (SOSAgent) clientRoute.getDstDevice(), (SOSAgent) serverRoute.getDstDevice());
+						return Command.STOP;
+					} else {
+						log.debug("Inter-agent route {}", interAgentRoute);
+					}
 
 					/* Establish connection */
 					SOSConnection newSOSconnection = sosConnections.addConnection(clientRoute, interAgentRoute, serverRoute, 
@@ -630,6 +648,8 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		if (closestAgent == null) {
 			log.error("Could not find a path from client/server {} to any agent {}. Report SOS bug.", dev, agents);
 			return null;
+		} else {
+			log.debug("Agent {} was found closest to client/server {}", closestAgent, dev);
 		}
 
 		return new SOSRoute(dev, closestAgent, shortestPath);
@@ -661,10 +681,13 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 				if (r == null) {
 					log.error("Could not find route between {} at AP {} and {} at AP {}", new Object[] { src, sAps, dst, dAps});
 				} else {
+					if (log.isDebugEnabled()) {
+						log.debug("Between agent {} and agent {}, found route {}", new Object[] {src, dst, r});
+					}
 					return new SOSRoute(src, dst, r);
 				}
 			} else {
-				log.error("Agent had no APs. {} at AP {} and {} at AP {}", new Object[] { src, sAps, dst, dAps});
+				log.error("Agent had no APs. Source {} at AP {} and Destination {} at AP {}", new Object[] { src, sAps, dst, dAps});
 			}
 
 		} else {
@@ -745,7 +768,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	/* **********************************
 	 * IOFSwitchListener implementation *
 	 * **********************************/
-	
+
 	@Override
 	public void switchAdded(DatapathId dpid) {
 	}
@@ -769,7 +792,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	/* ****************************
 	 * ISOSService implementation *
 	 * ****************************/
-	
+
 	@Override
 	public synchronized SOSReturnCode addAgent(SOSAgent agent) {
 		if (agents.contains(agent)) { /* MACs are ignored in devices for equality check, so we should only compare IP and ports here */
@@ -806,18 +829,21 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 
 	@Override
 	public synchronized SOSReturnCode enable() {
+		log.warn("Enabling SOS");
 		enabled = true;
 		return SOSReturnCode.ENABLED;
 	}
 
 	@Override
 	public synchronized SOSReturnCode disable() {
+		log.warn("Disabling SOS");
 		enabled = false;
 		return SOSReturnCode.DISABLED;
 	}
 
 	@Override
 	public SOSStatistics getStatistics() {
+		log.error("Statistics not implemented");
 		// TODO Auto-generated method stub
 		return null;
 	}

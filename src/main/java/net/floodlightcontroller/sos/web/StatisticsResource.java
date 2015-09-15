@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
 public class StatisticsResource extends ServerResource {
 	protected static Logger log = LoggerFactory.getLogger(StatisticsResource.class);
 
-	@Get("json")
+	@Get
 	public Map<String, String> handleAgent(String json) {
 		ISOSService sosService = (ISOSService) getContext().getAttributes().get(ISOSService.class.getCanonicalName());
 

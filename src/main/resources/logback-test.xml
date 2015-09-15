@@ -16,7 +16,7 @@
   <logger name="org.sdnplatform" level="INFO"></logger>
   <logger name="net.floodlightcontroller.forwarding" level="INFO"></logger>
   <logger name="net.floodlightcontroller.devicemanager" level="INFO"></logger>
-  <logger name="net.floodlightcontroller.sos" level="DEBUG"></logger>
+  <logger name="net.floodlightcontroller.sos" level="TRACE"></logger>
   <logger name="net.floodlightcontroller.linkdiscovery" level="INFO"></logger>
   <logger name="net.floodlightcontroller.core.internal" level="INFO"></logger>
   <logger level="INFO" name="net.floodlightcontroller.staticflowentry"></logger>

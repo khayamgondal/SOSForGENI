@@ -26,8 +26,8 @@ public class ConfigResource extends ServerResource {
 	protected static final String STR_SETTING_HARD_TIMEOUT = "hard-timout";
 	protected static final String STR_SETTING_IDLE_TIMEOUT = "idle-timout";
 
-	@Put("json")
-	@Post("json")
+	@Put
+	@Post
 	public Map<String, String> handleConfig(String json) {
 		ISOSService sosService = (ISOSService) getContext().getAttributes().get(ISOSService.class.getCanonicalName());
 

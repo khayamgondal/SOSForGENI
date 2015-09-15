@@ -30,8 +30,8 @@ public class WhitelistResource extends ServerResource {
 	protected static final String STR_SERVER_PORT = "server-tcp-port";
 	protected static final String STR_CLIENT_IP = "client-ip-address";
 
-	@Put("json")
-	@Post("json")
+	@Put
+	@Post
 	public Map<String, String> handleWhitelist(String json) {
 		ISOSService sosService = (ISOSService) getContext().getAttributes().get(ISOSService.class.getCanonicalName());
 		String operation = ((String) getRequestAttributes().get(SOSWebRoutable.STR_OPERATION)).toLowerCase().trim();

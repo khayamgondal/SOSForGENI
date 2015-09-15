@@ -139,6 +139,10 @@ public class SOSConnection {
 			addFlow(flow);
 		}
 	}
+	
+	public String getName() {
+		return transferId.toString();
+	}
 
 	@Override
 	public String toString() {

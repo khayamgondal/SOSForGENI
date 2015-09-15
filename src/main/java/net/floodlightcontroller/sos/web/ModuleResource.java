@@ -17,8 +17,8 @@ public class ModuleResource extends ServerResource {
 	protected static final String STR_OPERATION_ENABLE = "enable";	
 	protected static final String STR_OPERATION_DISABLE = "disable";	
 
-	@Put("json")
-	@Post("json")
+	@Put
+	@Post
 	public Map<String, String> handleModule(String json) {
 		ISOSService sosService = (ISOSService) getContext().getAttributes().get(ISOSService.class.getCanonicalName());
 		String operation = (String) getRequestAttributes().get("operation");
