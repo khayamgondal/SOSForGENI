@@ -495,7 +495,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 
 				if (packetStatus == SOSPacketStatus.INACTIVE_REGISTERED){
 					/* Process new TCP SOS session */
-					log.debug("Packet status was inactive but registered. Proceed with SOS.");
+					log.info("Packet status was inactive but registered. Proceed with SOS.");
 
 					IDevice srcDevice = IDeviceService.fcStore.get(cntx, IDeviceService.CONTEXT_SRC_DEVICE);
 					IDevice dstDevice = IDeviceService.fcStore.get(cntx, IDeviceService.CONTEXT_DST_DEVICE);

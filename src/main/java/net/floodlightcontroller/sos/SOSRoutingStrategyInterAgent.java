@@ -66,7 +66,7 @@ public class SOSRoutingStrategyInterAgent implements ISOSRoutingStrategy {
 			String flowName = flowNamePrefix + flowCount++;
 			SOS.sfp.addFlow(flowName, flow.build(), SOS.switchService.getSwitch(in.getNodeId()).getId());
 			flows.add(flowName);
-			log.info("Added inter-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow);
+			log.info("Added inter-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow.build());
 			
 			flow = factory.buildFlowAdd();
 			match = factory.buildMatch();
@@ -94,7 +94,7 @@ public class SOSRoutingStrategyInterAgent implements ISOSRoutingStrategy {
 			flowName = flowNamePrefix + flowCount++;
 			SOS.sfp.addFlow(flowName, flow.build(), SOS.switchService.getSwitch(in.getNodeId()).getId());
 			flows.add(flowName);
-			log.info("Added inter-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow);
+			log.info("Added inter-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow.build());
 		}
 		
 		/* 

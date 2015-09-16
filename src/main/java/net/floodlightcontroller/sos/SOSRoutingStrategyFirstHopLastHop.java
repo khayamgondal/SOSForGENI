@@ -102,7 +102,7 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				String flowName = flowNamePrefix + flowCount++;
 				SOS.sfp.addFlow(flowName, flow.build(), SOS.switchService.getSwitch(in.getNodeId()).getId());
 				flows.add(flowName);
-				log.info("Added to/from-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow);
+				log.info("Added to/from-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow.build());
 
 				/* ***** Start reverse redirection flow TODO can we reuse code anyplace here? ***** */
 				flow = factory.buildFlowAdd();
@@ -152,7 +152,7 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				flowName = flowNamePrefix + flowCount++;
 				SOS.sfp.addFlow(flowName, flow.build(), SOS.switchService.getSwitch(in.getNodeId()).getId());
 				flows.add(flowName);
-				log.info("Added to/from-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow);
+				log.info("Added to/from-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow.build());
 			} else if (out.equals(route.getRouteLastHop())) { /* handles flows 2, 3, 11, 14 */
 				/* Perform rewrite here */
 				OFFactory factory = SOS.switchService.getSwitch(in.getNodeId()).getOFFactory();
@@ -203,7 +203,7 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				String flowName = flowNamePrefix + flowCount++;
 				SOS.sfp.addFlow(flowName, flow.build(), SOS.switchService.getSwitch(in.getNodeId()).getId());
 				flows.add(flowName);
-				log.info("Added to/from-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow);
+				log.info("Added to/from-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow.build());
 
 				/* Reverse rewrite flow */
 				flow = factory.buildFlowAdd();
@@ -246,7 +246,7 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 							actionList.add(factory.actions().setField(factory.oxms().ethSrc(conn.getClient().getMACAddr())));
 						}
 						actionList.add(factory.actions().setField(factory.oxms().ipv4Src(conn.getClient().getIPAddr())));
-						actionList.add(factory.actions().setField(factory.oxms().tcpSrc(conn.getClient().getTcpPort()))); //FIXME is this off by one (-1)?
+						actionList.add(factory.actions().setField(factory.oxms().tcpSrc(conn.getClient().getTcpPort())));
 					}
 				}
 
@@ -262,7 +262,7 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				flowName = flowNamePrefix + flowCount++;
 				SOS.sfp.addFlow(flowName, flow.build(), SOS.switchService.getSwitch(in.getNodeId()).getId());
 				flows.add(flowName);
-				log.info("Added to/from-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow);
+				log.info("Added to/from-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow.build());
 			} else {
 				/* Simply forward to next hop from here */
 				OFFactory factory = SOS.switchService.getSwitch(in.getNodeId()).getOFFactory();
@@ -306,7 +306,7 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				String flowName = flowNamePrefix + flowCount++;
 				SOS.sfp.addFlow(flowName, flow.build(), SOS.switchService.getSwitch(in.getNodeId()).getId());
 				flows.add(flowName);
-				log.info("Added to/from-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow);
+				log.info("Added to/from-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow.build());
 
 				/* And now do the reverse flow */
 				flow = factory.buildFlowAdd();
@@ -349,7 +349,7 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				flowName = flowNamePrefix + flowCount++;
 				SOS.sfp.addFlow(flowName, flow.build(), SOS.switchService.getSwitch(in.getNodeId()).getId());
 				flows.add(flowName);
-				log.info("Added to/from-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow);
+				log.info("Added to/from-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow.build());
 			}
 		}
 		conn.addFlows(flows);
