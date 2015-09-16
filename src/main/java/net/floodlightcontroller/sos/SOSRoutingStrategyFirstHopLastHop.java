@@ -74,7 +74,7 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				} else {
 					match.setExact(MatchField.TCP_SRC, ((SOSServer) route.getSrcDevice()).getTcpPort());
 				}
-				
+
 				/* 
 				 * Redirect to either client-side or server-side agent via L2 rewrite.
 				 * This allows for non-OpenFlow switches to be mixed into the network,
@@ -119,7 +119,7 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				} else {
 					match.setExact(MatchField.TCP_DST, ((SOSServer) route.getSrcDevice()).getTcpPort());
 				}
-				
+
 				/* 
 				 * L3+L4 destined for client or server, but might have incorrect MAC.
 				 * Need to make the destination *think* the packet came from the other
@@ -169,19 +169,26 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				} else {
 					match.setExact(MatchField.TCP_SRC, ((SOSServer) route.getSrcDevice()).getTcpPort());
 				}
-
 				if (factory.getVersion().compareTo(OFVersion.OF_12) < 0) {
 					if (!rewriteMacUponRedirection) { 
 						actionList.add(factory.actions().setDlDst(route.getDstDevice().getMACAddr()));
 					}
 					actionList.add(factory.actions().setNwDst(route.getDstDevice().getIPAddr()));
-					actionList.add(factory.actions().setTpDst(((SOSAgent) route.getDstDevice()).getDataPort()));
+					if (route.getSrcDevice() instanceof SOSClient) {
+						actionList.add(factory.actions().setTpDst(((SOSAgent) route.getDstDevice()).getDataPort()));
+					} else {
+						actionList.add(factory.actions().setTpDst(conn.getServerSideAgentTcpPort())); /* server side flows -- need to pick agent's L4 port instead */
+					}
 				} else {
 					if (!rewriteMacUponRedirection) {
 						actionList.add(factory.actions().setField(factory.oxms().ethDst(route.getDstDevice().getMACAddr())));
 					}
 					actionList.add(factory.actions().setField(factory.oxms().ipv4Dst(route.getDstDevice().getIPAddr())));
-					actionList.add(factory.actions().setField(factory.oxms().tcpDst(((SOSAgent) route.getDstDevice()).getDataPort())));
+					if (route.getSrcDevice() instanceof SOSClient) {
+						actionList.add(factory.actions().setField(factory.oxms().tcpDst(((SOSAgent) route.getDstDevice()).getDataPort())));
+					} else {
+						actionList.add(factory.actions().setField(factory.oxms().tcpDst(conn.getServerSideAgentTcpPort()))); /* server side flows -- need to pick agent's L4 port instead */
+					}
 				}
 
 				actionList.add(factory.actions().output(out.getPortId(), 0xffFFffFF));
@@ -227,19 +234,19 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 						actionList.add(factory.actions().setField(factory.oxms().ipv4Src(conn.getServer().getIPAddr())));
 						actionList.add(factory.actions().setField(factory.oxms().tcpSrc(conn.getServer().getTcpPort())));
 					}
-				} else {
+				} else { 
 					if (factory.getVersion().compareTo(OFVersion.OF_12) < 0) {
 						if (!rewriteMacUponRedirection) { 
 							actionList.add(factory.actions().setDlSrc(conn.getClient().getMACAddr())); /* pretend it came from client */
 						}
 						actionList.add(factory.actions().setNwSrc(conn.getClient().getIPAddr()));
-						actionList.add(factory.actions().setTpSrc(conn.getClient().getTcpPort()));
+						actionList.add(factory.actions().setTpSrc(conn.getClient().getTcpPort())); 
 					} else {
 						if (!rewriteMacUponRedirection) {
 							actionList.add(factory.actions().setField(factory.oxms().ethSrc(conn.getClient().getMACAddr())));
 						}
 						actionList.add(factory.actions().setField(factory.oxms().ipv4Src(conn.getClient().getIPAddr())));
-						actionList.add(factory.actions().setField(factory.oxms().tcpSrc(conn.getClient().getTcpPort())));
+						actionList.add(factory.actions().setField(factory.oxms().tcpSrc(conn.getClient().getTcpPort()))); //FIXME is this off by one (-1)?
 					}
 				}
 
@@ -286,7 +293,7 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 					match.setExact(MatchField.TCP_SRC, conn.getServer().getTcpPort());
 					match.setExact(MatchField.TCP_DST, conn.getClient().getTcpPort()); /* will change at last hop */
 				}
-				
+
 				actionList.add(factory.actions().output(out.getPortId(), 0xffFFffFF));
 
 				flow.setBufferId(OFBufferId.NO_BUFFER);
@@ -300,7 +307,7 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				SOS.sfp.addFlow(flowName, flow.build(), SOS.switchService.getSwitch(in.getNodeId()).getId());
 				flows.add(flowName);
 				log.info("Added to/from-agent flow {}, {} on SW " + SOS.switchService.getSwitch(in.getNodeId()).getId(), flowName, flow);
-				
+
 				/* And now do the reverse flow */
 				flow = factory.buildFlowAdd();
 				match = factory.buildMatch();

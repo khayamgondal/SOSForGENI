@@ -26,7 +26,7 @@ public class SOSConnection {
 			throw new IllegalArgumentException("SOSRoute clientToAgent must be of type client-to-agent");
 		}
 		this.clientToAgent = clientToAgent;
-		if (agentToAgent.getRouteType() != SOSRouteType.AGENT_2_AGENT) {
+		if (interAgent.getRouteType() != SOSRouteType.AGENT_2_AGENT) {
 			throw new IllegalArgumentException("SOSRoute interAgent must be of type agent-to-agent");
 		}
 		this.agentToAgent = interAgent;

@@ -58,6 +58,7 @@ import net.floodlightcontroller.routing.IRoutingService;
 import net.floodlightcontroller.routing.Route;
 import net.floodlightcontroller.sos.web.SOSWebRoutable;
 import net.floodlightcontroller.staticflowentry.IStaticFlowEntryPusherService;
+import net.floodlightcontroller.topology.ITopologyService;
 
 /**
  * Steroid OpenFlow Service Module
@@ -72,10 +73,9 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	private static IDeviceService deviceService;
 	protected static IStaticFlowEntryPusherService sfp;
 	private static IRestApiService restApiService;
+	private static ITopologyService topologyService;
 
 	private static MacAddress controllerMac;
-	//private static TransportPort agentControlPort; // 9998
-	//private static TransportPort agentDataPort; // 9877
 
 	private static SOSConnections sosConnections;
 	private static Set<SOSAgent> agents;
@@ -93,6 +93,12 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		Collection<Class<? extends IFloodlightService>> l = 
 				new ArrayList<Class<? extends IFloodlightService>>();
 		l.add(IFloodlightProviderService.class);
+		l.add(IOFSwitchService.class);
+		l.add(IRoutingService.class);
+		l.add(IDeviceService.class);
+		l.add(IStaticFlowEntryPusherService.class);
+		l.add(IRestApiService.class);
+		l.add(ITopologyService.class);
 		return l;
 	}
 
@@ -104,6 +110,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		deviceService = context.getServiceImpl(IDeviceService.class);
 		sfp = context.getServiceImpl(IStaticFlowEntryPusherService.class);
 		restApiService = context.getServiceImpl(IRestApiService.class);
+		topologyService = context.getServiceImpl(ITopologyService.class);
 
 		agents = new HashSet<SOSAgent>();
 		sosConnections = new SOSConnections();
@@ -127,11 +134,8 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			flowTimeout = Short.parseShort(configOptions.get("flow-timeout"));
 			enabled = Boolean.parseBoolean(configOptions.get("enabled") != null ? configOptions.get("enabled") : "true"); /* enabled by default if not present --> listing module is enabling */
 
-			//agentControlPort = TransportPort.of(Integer.parseInt(configOptions.get("agent-msg-port")));
-			//agentDataPort = TransportPort.of(Integer.parseInt(configOptions.get("agent-tcp-port")));
-
 		} catch (IllegalArgumentException | NullPointerException ex) {
-			log.error("Incorrect SOS configuration options", ex);
+			log.error("Incorrect SOS configuration options. Required: 'controller-mac', 'buffer-size', 'queue-capacity', 'parallel-tcp-sockets', 'flow-timeout', 'enabled'", ex);
 			throw ex;
 		}
 	}
@@ -162,7 +166,8 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		 * Allow the CONTEXT_SRC/DST_DEVICE field to be populated by 
 		 * the DeviceManager. This makes our job easier :) 
 		 */
-		if (type == OFType.PACKET_IN && name.equalsIgnoreCase("devicemananger")) {
+		if (type == OFType.PACKET_IN && name.equalsIgnoreCase("devicemanager")) {
+			log.debug("SOS is telling DeviceManager to run before.");
 			return true;
 		} else {
 			return false;
@@ -207,6 +212,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		l2.setSourceMACAddress(controllerMac);
 		l2.setDestinationMACAddress(isClientSideAgent ? conn.getClientSideAgent().getMACAddr() : conn.getServerSideAgent().getMACAddr());
 		l2.setEtherType(EthType.IPv4);
+		log.trace("Set info packet destination MAC to {}", l2.getDestinationMACAddress());
 
 		/* L3 of packet */
 		IPv4 l3 = new IPv4();
@@ -214,12 +220,15 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		l3.setDestinationAddress(isClientSideAgent ? conn.getClientSideAgent().getIPAddr() : conn.getServerSideAgent().getIPAddr());
 		l3.setProtocol(IpProtocol.UDP);
 		l3.setTtl((byte) 64);
+		log.trace("Set info packet source IP to {}", l3.getSourceAddress());
+		log.trace("Set info packet destination IP to {}", l3.getDestinationAddress());
 
 		/* L4 of packet */
 		UDP l4 = new UDP();
 		l4.setSourcePort(conn.getServer().getTcpPort());
 		l4.setDestinationPort(isClientSideAgent ? conn.getClientSideAgent().getControlPort() : conn.getServerSideAgent().getControlPort());
-
+		log.trace("Set info packet source port to {}", l4.getSourcePort());
+		log.trace("Set info packet destination port to {}", l4.getDestinationPort());
 
 		/* 
 		 * Convert the string into IPacket. Data extends BasePacket, which is an abstract class
@@ -287,8 +296,10 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		ofPacket.setInPort(OFPort.ANY);
 		List<OFAction> actions = new ArrayList<OFAction>();
 		if (isClientSideAgent) {
+			log.debug("Sending client-side info packet to agent {} out switch+port {}", conn.getClientSideAgent(), conn.getClientSideRoute().getRouteLastHop());
 			actions.add(factory.actions().output(conn.getClientSideRoute().getRouteLastHop().getPortId(), 0xffFFffFF));
 		} else {
+			log.debug("Sending server-side info packet to agent {} out switch+port {}", conn.getServerSideAgent(), conn.getServerSideRoute().getRouteLastHop());
 			actions.add(factory.actions().output(conn.getServerSideRoute().getRouteLastHop().getPortId(), 0xffFFffFF));
 		}
 		ofPacket.setActions(actions);
@@ -505,9 +516,9 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 
 					/* Init Agent/Client */
 					SOSClient client = new SOSClient(l3.getSourceAddress(), l4.getSourcePort(), l2.getSourceMACAddress());
-					SOSRoute clientRoute = routeToNeighborhoodAgent(client, srcDevice.getAttachmentPoints(), IPv4Address.NONE);
+					SOSRoute clientRoute = routeToFriendlyNeighborhoodAgent(client, srcDevice.getAttachmentPoints(), IPv4Address.NONE);
 					if (clientRoute == null) {
-						log.error("Could not compute route from client {} to neighborhood agent. Report SOS bug", client);
+						log.error("Could not compute route from client {} to neighborhood agent. Report SOS bug.", client);
 						return Command.STOP;
 					} else {
 						log.debug("Client-to-agent route {}", clientRoute);
@@ -515,10 +526,10 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 
 					/* Init Agent/Server */
 					SOSServer server = new SOSServer(l3.getDestinationAddress(), l4.getDestinationPort(), l2.getDestinationMACAddress());
-					SOSRoute serverRoute = routeToNeighborhoodAgent(server, dstDevice.getAttachmentPoints(), 
+					SOSRoute serverRoute = routeToFriendlyNeighborhoodAgent(server, dstDevice.getAttachmentPoints(), 
 							clientRoute.getRoute() != null ? clientRoute.getDstDevice().getIPAddr() : IPv4Address.NONE);
 					if (serverRoute == null) {
-						log.error("Could not compute route from server {} to neighborhood agent. Report SOS bug", server);
+						log.error("Could not compute route from server {} to neighborhood agent. Report SOS bug.", server);
 						return Command.STOP;
 					} else {
 						log.debug("Server-to-agent route {}", serverRoute);
@@ -526,7 +537,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 
 					SOSRoute interAgentRoute = routeBetweenAgents((SOSAgent) clientRoute.getDstDevice(), (SOSAgent) serverRoute.getDstDevice());
 					if (interAgentRoute == null) {
-						log.error("Could not compute route from agent {} to agent {}. Report SOS bug", (SOSAgent) clientRoute.getDstDevice(), (SOSAgent) serverRoute.getDstDevice());
+						log.error("Could not compute route from agent {} to agent {}. Report SOS bug.", (SOSAgent) clientRoute.getDstDevice(), (SOSAgent) serverRoute.getDstDevice());
 						return Command.STOP;
 					} else {
 						log.debug("Inter-agent route {}", interAgentRoute);
@@ -596,13 +607,19 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	 * @param agentToAvoid, optional, use IPv4Address.NONE if N/A
 	 * @return
 	 */
-	private SOSRoute routeToNeighborhoodAgent(SOSDevice dev, SwitchPort[] devAps, IPv4Address agentToAvoid) {
+	private SOSRoute routeToFriendlyNeighborhoodAgent(SOSDevice dev, SwitchPort[] devAps, IPv4Address agentToAvoid) {
 		Route shortestPath = null;
 		SOSAgent closestAgent = null;
 
 		/* First, make sure client has a valid attachment point */
 		if (devAps.length == 0) {
 			log.warn("Client/Server {} was found in the device manager but does not have a valid attachment point. Report SOS bug.");
+			return null;
+		}
+		/* Then, narrow down the APs to the real location where the device is connected */
+		SwitchPort devTrueAp = findTrueAttachmentPoint(devAps);
+		if (devTrueAp == null) {
+			log.error("Could not determine true attachment point for device {}. Report SOS bug.", dev);
 			return null;
 		}
 
@@ -615,23 +632,30 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 				Iterator<? extends IDevice> i = deviceService.queryDevices(MacAddress.NONE, null, agent.getIPAddr(), IPv6Address.NONE, DatapathId.NONE, OFPort.ZERO);
 				if (i.hasNext()) {
 					IDevice d = i.next();
-					/* The 0th attachment point should always be the real location unless we've experienced an agent migration (which should be done in a maintenance period). */
 					SwitchPort[] agentAps = d.getAttachmentPoints();
 					if (agentAps.length > 0) {
-						Route r = routingService.getRoute(devAps[0].getSwitchDPID(), agentAps[0].getSwitchDPID(), U64.ZERO);
-						if (shortestPath == null) {
+						SwitchPort agentTrueAp = findTrueAttachmentPoint(agentAps);
+						if (agentTrueAp == null) {
+							log.error("Could not determine true attachment point for agent {}. Trying next agent. Report SOS bug.", agent);
+							continue;
+						}
+						log.trace("Asking for route from {} to {}", devTrueAp, agentTrueAp);
+						Route r = routingService.getRoute(devTrueAp.getSwitchDPID(), devTrueAp.getPort(), agentTrueAp.getSwitchDPID(), agentTrueAp.getPort(), U64.ZERO);
+						if (r != null && shortestPath == null) {
 							log.debug("Found initial agent {} w/route {}", agent, r);
 							shortestPath = r;
 							closestAgent = agent;
-						} else if (shortestPath.getRouteCount() > r.getRouteCount()) {
+							closestAgent.setMACAddr(d.getMACAddress()); /* set the MAC while we're here; TODO listen for device updates from IDeviceListener instead */
+						} else if (r != null && shortestPath.getPath().size() > r.getPath().size()) { /* This implies we keep the first agent if there's a tie */
 							if (log.isDebugEnabled()) { /* Use isDebugEnabled() when we have to create a new object for the log */
 								log.debug("Found new agent {} w/shorter route. Old route {}; new route {}", new Object[] { agent, shortestPath, r});
 							}
 							shortestPath = r;
 							closestAgent = agent;
+							closestAgent.setMACAddr(d.getMACAddress()); /* set the MAC while we're here; TODO listen for device updates from IDeviceListener instead */
 						} else {
 							if (log.isDebugEnabled()) { 
-								log.debug("Retaining current agent {} w/shortest route. Kept route {}; Longer contender {}", new Object[] { agent, shortestPath, r }); 
+								log.debug("Retaining current agent {} w/shortest route. Kept route {}; Longer contender {}, {}", new Object[] { closestAgent, shortestPath, agent, r }); 
 							}
 						}
 					} else {
@@ -656,6 +680,43 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	}
 
 	/**
+	 * A "true" attachment point is defined as the physical location
+	 * in the network where the device is plugged in.
+	 * 
+	 * Each OpenFlow island can have up to exactly one attachment point 
+	 * per device. If there are multiple islands and the same device is 
+	 * known on each island, then there must be a link between these 
+	 * islands (assuming no devices with duplicate MACs exist). If there
+	 * is no link between the islands, then the device cannot be learned
+	 * on each island (again, assuming all devices have unique MACs).
+	 * 
+	 * This means if we iterate through the attachment points and find
+	 * one who's switch port is not a member of a link b/t switches/islands,
+	 * then that attachment point is the device's true location. All other
+	 * attachment points are where the device is known on other islands and
+	 * should reside on external/iter-island links.
+	 * 
+	 * @param aps
+	 * @return
+	 */
+	private SwitchPort findTrueAttachmentPoint(SwitchPort[] aps) {
+		if (aps != null) {
+			for (SwitchPort ap : aps) {
+				Set<OFPort> portsOnLinks = topologyService.getPortsWithLinks(ap.getSwitchDPID());
+				if (!portsOnLinks.contains(ap.getPort())) {
+					log.debug("Found 'true' attachment point of {}", ap);
+					return ap;
+				} else {
+					log.trace("Attachment point {} was not the 'true' attachment point", ap);
+				}
+			}
+		}
+		/* This will catch case aps=null, empty, or no-true-ap */
+		log.error("Could not locate a 'true' attachment point in {}", aps);
+		return null;
+	}
+
+	/**
 	 * Find the shortest route (by hop-count) between two SOS agents. 
 	 * Do not push flows for the route.
 	 * @param src
@@ -672,24 +733,26 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			IDevice sd = si.next();
 			IDevice dd = di.next();
 
-			/* The 0th attachment point should always be the real location unless we've experienced an agent migration (which should be done in a maintenance period). */
-			SwitchPort[] sAps = sd.getAttachmentPoints();
-			SwitchPort[] dAps = dd.getAttachmentPoints();
-
-			if (sAps.length > 0 && dAps.length > 0) {
-				Route r = routingService.getRoute(sAps[0].getSwitchDPID(), dAps[0].getSwitchDPID(), U64.ZERO);
-				if (r == null) {
-					log.error("Could not find route between {} at AP {} and {} at AP {}", new Object[] { src, sAps, dst, dAps});
-				} else {
-					if (log.isDebugEnabled()) {
-						log.debug("Between agent {} and agent {}, found route {}", new Object[] {src, dst, r});
-					}
-					return new SOSRoute(src, dst, r);
-				}
-			} else {
-				log.error("Agent had no APs. Source {} at AP {} and Destination {} at AP {}", new Object[] { src, sAps, dst, dAps});
+			SwitchPort sTrueAp = findTrueAttachmentPoint(sd.getAttachmentPoints());
+			SwitchPort dTrueAp = findTrueAttachmentPoint(dd.getAttachmentPoints());
+			if (sTrueAp == null) {
+				log.error("Could not locate true attachment point for client-side agent {}. APs were {}. Report SOS bug.", src, sd.getAttachmentPoints());
+				return null;
+			} else if (dTrueAp == null) {
+				log.error("Could not locate true attachment point for server-side agent {}. APs were {}. Report SOS bug.", dst, dd.getAttachmentPoints());
+				return null;
 			}
 
+
+			Route r = routingService.getRoute(sTrueAp.getSwitchDPID(), sTrueAp.getPort(), dTrueAp.getSwitchDPID(), dTrueAp.getPort(), U64.ZERO);
+			if (r == null) {
+				log.error("Could not find route between {} at AP {} and {} at AP {}", new Object[] { src, sTrueAp, dst, dTrueAp});
+			} else {
+				if (log.isDebugEnabled()) {
+					log.debug("Between agent {} and agent {}, found route {}", new Object[] {src, dst, r});
+				}
+				return new SOSRoute(src, dst, r);
+			}
 		} else {
 			log.debug("Query for agents resulted in no devices. Source iterator: {}; Destination iterator {}", si, di);
 		}
@@ -801,6 +864,11 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		} else {
 			log.warn("Agent {} added.", agent);
 			agents.add(agent);
+			Set<DatapathId> switches = switchService.getAllSwitchDpids();
+			for (DatapathId sw : switches) {
+				log.debug("ARPing for agent {} on switch {}", agent, sw);
+				arpForDevice(agent.getIPAddr(), IPv4Address.NO_MASK /* doesn't matter really */, controllerMac, VlanVid.ZERO, switchService.getSwitch(sw));
+			}
 			return SOSReturnCode.AGENT_ADDED;
 		}
 	}

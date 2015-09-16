@@ -14,9 +14,9 @@ public class SOSRoute {
 	private SOSRouteType t;
 	
 	public SOSRoute(@Nonnull SOSDevice src, @Nonnull SOSDevice dst, @Nonnull Route route) {
-		if (d1 == null) {
+		if (src == null) {
 			throw new IllegalArgumentException("SOSDevice src cannot be null");
-		} else if (d2 == null) {
+		} else if (dst == null) {
 			throw new IllegalArgumentException("SOSDevice dst cannot be null");
 		} else if (route == null) {
 			throw new IllegalArgumentException("Route cannot be null");
