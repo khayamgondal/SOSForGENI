@@ -867,7 +867,13 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			Set<DatapathId> switches = switchService.getAllSwitchDpids();
 			for (DatapathId sw : switches) {
 				log.debug("ARPing for agent {} on switch {}", agent, sw);
-				arpForDevice(agent.getIPAddr(), IPv4Address.NO_MASK /* doesn't matter really */, controllerMac, VlanVid.ZERO, switchService.getSwitch(sw));
+				arpForDevice(
+						agent.getIPAddr(), 
+						(agent.getIPAddr().and(IPv4Address.of("255.255.255.0"))).or(IPv4Address.of("0.0.0.254")) /* Doesn't matter really; must be same subnet though */, 
+						MacAddress.BROADCAST /* Use broadcast as to not potentially confuse a host's ARP cache */, 
+						VlanVid.ZERO /* Switch will push correct VLAN tag if required */, 
+						switchService.getSwitch(sw)
+						);
 			}
 			return SOSReturnCode.AGENT_ADDED;
 		}
