@@ -23,8 +23,8 @@ public class ConfigResource extends ServerResource {
 	protected static final String STR_SETTING_PARALLEL = "parallel-connections";	
 	protected static final String STR_SETTING_BUFFER_SIZE = "buffer-size";	
 	protected static final String STR_SETTING_QUEUE_CAPACITY = "queue-capacity";		
-	protected static final String STR_SETTING_HARD_TIMEOUT = "hard-timout";
-	protected static final String STR_SETTING_IDLE_TIMEOUT = "idle-timout";
+	protected static final String STR_SETTING_HARD_TIMEOUT = "hard-timeout";
+	protected static final String STR_SETTING_IDLE_TIMEOUT = "idle-timeout";
 
 	@Put
 	@Post

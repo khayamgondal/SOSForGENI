@@ -212,6 +212,12 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule {
 				}
 				return;
 			}
+			
+			if (IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD).getEtherType() == EthType.ARP) {
+				log.debug("Flooding instead of forwarding ARP packet");
+				doFlood(sw, pi, cntx);
+				return;
+			}
 
 			// Install all the routes where both src and dst have attachment
 			// points.  Since the lists are stored in sorted order we can
@@ -324,7 +330,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule {
 				 * since it's a prerequisite for transport ports.
 				 */
 				if (!FLOWMOD_DEFAULT_MATCH_IP_ADDR) {
-					mb.setExact(MatchField.ETH_TYPE, EthType.IPv6);
+					mb.setExact(MatchField.ETH_TYPE, EthType.IPv4);
 				}
 				
 				if (ip.getProtocol().equals(IpProtocol.TCP)) {
@@ -337,7 +343,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule {
 					mb.setExact(MatchField.IP_PROTO, IpProtocol.UDP)
 					.setExact(MatchField.UDP_SRC, udp.getSourcePort())
 					.setExact(MatchField.UDP_DST, udp.getDestinationPort());
-				}
+				} 
 			}
 		} else if (eth.getEtherType() == EthType.ARP) { /* shallow check for equality is okay for EthType */
 			mb.setExact(MatchField.ETH_TYPE, EthType.ARP);
@@ -394,8 +400,8 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule {
 	protected void doFlood(IOFSwitch sw, OFPacketIn pi, FloodlightContext cntx) {
 		OFPort inPort = (pi.getVersion().compareTo(OFVersion.OF_12) < 0 ? pi.getInPort() : pi.getMatch().get(MatchField.IN_PORT));
 		if (topologyService.isIncomingBroadcastAllowed(sw.getId(), inPort) == false) {
-			if (log.isTraceEnabled()) {
-				log.trace("doFlood, drop broadcast packet, pi={}, " +
+			if (log.isDebugEnabled()) {
+				log.debug("doFlood, drop broadcast packet, pi={}, " +
 						"from a blocked port, srcSwitch=[{},{}], linkInfo={}",
 						new Object[] {pi, sw.getId(), inPort});
 			}

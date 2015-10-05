@@ -918,7 +918,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	@Override
 	public SOSStatistics getStatistics() {
 		log.error("Statistics not implemented");
-		// TODO Auto-generated method stub
+		// TODO Implement statistics
 		return null;
 	}
 
@@ -926,7 +926,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	public synchronized SOSReturnCode setFlowTimeouts(int hardSeconds, int idleSeconds) {
 		if (idleSeconds >= 0) {
 			flowTimeout = (short) idleSeconds;
-			log.warn("Set idle timeout to {}. Ignoring hard timeout of {}", idleSeconds, hardSeconds); //TODO do we even care about a hard timeout?
+			log.warn("Set idle timeout to {}. Ignoring hard timeout of {}", idleSeconds, hardSeconds);
 		}
 		return SOSReturnCode.CONFIG_SET;
 	}
