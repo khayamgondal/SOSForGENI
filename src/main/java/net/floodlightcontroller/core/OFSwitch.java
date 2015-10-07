@@ -37,7 +37,6 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import javax.annotation.Nonnull;
 
-import net.floodlightcontroller.core.annotations.LogMessageDoc;
 import net.floodlightcontroller.core.internal.IOFSwitchManager;
 import net.floodlightcontroller.core.internal.TableFeatures;
 import net.floodlightcontroller.core.util.AppCookie;
@@ -69,6 +68,7 @@ import org.projectfloodlight.openflow.types.DatapathId;
 import org.projectfloodlight.openflow.types.OFAuxId;
 import org.projectfloodlight.openflow.types.OFPort;
 import org.projectfloodlight.openflow.types.TableId;
+import org.projectfloodlight.openflow.types.U64;
 
 import net.floodlightcontroller.util.LinkedHashSetWrapper;
 import net.floodlightcontroller.util.OrderedCollection;
@@ -124,7 +124,7 @@ public class OFSwitch implements IOFSwitchBackend {
 	private SwitchStatus status;
 
 	public static final int OFSWITCH_APP_ID = ident(5);
-	
+
 	private TableId maxTableToGetTableMissFlow = TableId.of(4); /* this should cover most HW switches that have a couple SW flow tables */
 
 	static {
@@ -248,8 +248,12 @@ public class OFSwitch implements IOFSwitchBackend {
 				newPortsByName.put(p.getName().toLowerCase(), p);
 				if (!p.getState().contains(OFPortState.LINK_DOWN) 
 						&& !p.getConfig().contains(OFPortConfig.PORT_DOWN)) {
-					newEnabledPortList.add(p);
-					newEnabledPortNumbers.add(p.getPortNo());
+					if (!newEnabledPortList.contains(p)) {
+						newEnabledPortList.add(p);
+					}
+					if (!newEnabledPortNumbers.contains(p.getPortNo())) {
+						newEnabledPortNumbers.add(p.getPortNo());
+					}
 				}
 			}
 			portsByName = Collections.unmodifiableMap(newPortsByName);
@@ -574,8 +578,12 @@ public class OFSwitch implements IOFSwitchBackend {
 					// Enabled = not down admin (config) or phys (state)
 					if (!p.getConfig().contains(OFPortConfig.PORT_DOWN)
 							&& !p.getState().contains(OFPortState.LINK_DOWN)) {
-						newEnabledPortList.add(p);
-						newEnabledPortNumbers.add(p.getPortNo());
+						if (!newEnabledPortList.contains(p)) {
+							newEnabledPortList.add(p);
+						}
+						if (!newEnabledPortNumbers.contains(p.getPortNo())) {
+							newEnabledPortNumbers.add(p.getPortNo());
+						}
 					}
 
 					// get changes
@@ -759,7 +767,7 @@ public class OFSwitch implements IOFSwitchBackend {
 	public void write(Iterable<OFMessage> msglist, LogicalOFMessageCategory category) {
 		if (isActive()) {
 			this.getConnection(category).write(msglist);
-			
+
 			for(OFMessage m : msglist) {
 				switchManager.handleOutgoingMessage(this, m);				
 			}
@@ -784,16 +792,10 @@ public class OFSwitch implements IOFSwitchBackend {
 	}
 
 	@Override
-	@LogMessageDoc(level="WARN",
-	message="Sending OF message that modifies switch " +
-			"state while in the slave role: {switch}",
-			explanation="An application has sent a message to a switch " +
-					"that is not valid when the switch is in a slave role",
-					recommendation=LogMessageDoc.REPORT_CONTROLLER_BUG)
 	public void write(Iterable<OFMessage> msglist) {
 		if (isActive()) {
 			connections.get(OFAuxId.MAIN).write(msglist);
-						
+
 			for(OFMessage m : msglist) {
 				switchManager.handleOutgoingMessage(this, m);
 			}
@@ -831,7 +833,7 @@ public class OFSwitch implements IOFSwitchBackend {
 			/* OF1.3+ Per-table actions are set later in the OFTableFeaturesRequest/Reply */
 			this.actions = featuresReply.getActions();
 		}
-		
+
 		this.nTables = featuresReply.getNTables();
 	}
 
@@ -986,7 +988,7 @@ public class OFSwitch implements IOFSwitchBackend {
 	private <REPLY extends OFStatsReply> ListenableFuture<List<REPLY>> addInternalStatsReplyListener(final ListenableFuture<List<REPLY>> future, OFStatsRequest<REPLY> request) {
 		switch (request.getStatsType()) {
 		case TABLE_FEATURES:
-		/* case YOUR_CASE_HERE */
+			/* case YOUR_CASE_HERE */
 			future.addListener(new Runnable() {
 				/*
 				 * We know the reply will be a list of OFStatsReply.
@@ -1009,7 +1011,7 @@ public class OFSwitch implements IOFSwitchBackend {
 							case TABLE_FEATURES:
 								processOFTableFeatures((List<OFTableFeaturesStatsReply>) future.get());
 								break;
-							/* case YOUR_CASE_HERE */
+								/* case YOUR_CASE_HERE */
 							default:
 								throw new Exception("Received an invalid OFStatsReply of " 
 										+ replies.get(0).getStatsType().toString() + ". Expected TABLE_FEATURES.");
@@ -1097,7 +1099,7 @@ public class OFSwitch implements IOFSwitchBackend {
 	public Collection<TableId> getTables() {
 		return new ArrayList<TableId>(tables);
 	}
-	
+
 	@Override
 	public short getNumTables() {
 		return this.nTables;
@@ -1109,12 +1111,6 @@ public class OFSwitch implements IOFSwitchBackend {
 	}
 
 	@Override
-	@LogMessageDoc(level="WARN",
-	message="Switch {switch} flow table is full",
-	explanation="The controller received flow table full " +
-			"message from the switch, could be caused by increased " +
-			"traffic pattern",
-			recommendation=LogMessageDoc.REPORT_CONTROLLER_BUG)
 	public void setTableFull(boolean isFull) {
 		if (isFull && !flowTableFull) {
 			switchManager.addSwitchEvent(this.datapathId,
@@ -1236,7 +1232,7 @@ public class OFSwitch implements IOFSwitchBackend {
 	public TableId getMaxTableForTableMissFlow() {
 		return maxTableToGetTableMissFlow;
 	}
-	
+
 	@Override
 	public TableId setMaxTableForTableMissFlow(TableId max) {
 		if (max.getValue() >= nTables) {
@@ -1245,5 +1241,10 @@ public class OFSwitch implements IOFSwitchBackend {
 			maxTableToGetTableMissFlow = max;
 		}
 		return maxTableToGetTableMissFlow;
+	}
+
+	@Override
+	public U64 getLatency() {
+		return this.connections.get(OFAuxId.MAIN).getLatency();
 	}
 }

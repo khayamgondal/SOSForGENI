@@ -26,8 +26,6 @@ import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Set;
 
-import net.floodlightcontroller.core.annotations.LogMessageCategory;
-import net.floodlightcontroller.core.annotations.LogMessageDoc;
 import net.floodlightcontroller.routing.BroadcastTree;
 import net.floodlightcontroller.routing.Link;
 import net.floodlightcontroller.routing.Route;
@@ -49,7 +47,6 @@ import com.google.common.cache.LoadingCache;
  * A representation of a network topology.  Used internally by
  * {@link TopologyManager}
  */
-@LogMessageCategory("Network Topology")
 public class TopologyInstance {
 
     public static final short LT_SH_LINK = 1;
@@ -116,86 +113,6 @@ public class TopologyInstance {
     // in the cache.
     private final PathCacheLoader pathCacheLoader = new PathCacheLoader(this);
     protected LoadingCache<RouteId, Route> pathcache;
-
-    public TopologyInstance() {
-        this.switches = new HashSet<DatapathId>();
-        this.switchPorts = new HashMap<DatapathId, Set<OFPort>>();
-        this.switchPortLinks = new HashMap<NodePortTuple, Set<Link>>();
-        this.broadcastDomainPorts = new HashSet<NodePortTuple>();
-        this.tunnelPorts = new HashSet<NodePortTuple>();
-        this.blockedPorts = new HashSet<NodePortTuple>();
-        this.blockedLinks = new HashSet<Link>();
-		this.allLinks = new HashMap<NodePortTuple, Set<Link>>();
-		this.destinationRootedFullTrees= new HashMap<DatapathId, BroadcastTree>();
-		this.broadcastNodePorts= new HashSet<NodePortTuple>();
-		this.broadcastPortMap = new HashMap<DatapathId,Set<OFPort>>();
-		this.allPorts = new HashMap<DatapathId, Set<OFPort>>();
-        
-    }
-
-    public TopologyInstance(Map<DatapathId, Set<OFPort>> switchPorts,
-                            Map<NodePortTuple, Set<Link>> switchPortLinks,
-                            Set<NodePortTuple> broadcastDomainPorts)
-    {
-        this.switches = new HashSet<DatapathId>(switchPorts.keySet());
-        this.switchPorts = new HashMap<DatapathId, Set<OFPort>>(switchPorts);
-        this.switchPortLinks = new HashMap<NodePortTuple,
-                Set<Link>>(switchPortLinks);
-        this.broadcastDomainPorts = new HashSet<NodePortTuple>(broadcastDomainPorts);
-        this.tunnelPorts = new HashSet<NodePortTuple>();
-        this.blockedPorts = new HashSet<NodePortTuple>();
-        this.blockedLinks = new HashSet<Link>();
-		this.allLinks = new HashMap<NodePortTuple, Set<Link>>();
-		this.destinationRootedFullTrees= new HashMap<DatapathId, BroadcastTree>();
-		this.broadcastNodePorts= new HashSet<NodePortTuple>();
-		this.broadcastPortMap = new HashMap<DatapathId,Set<OFPort>>();
-		this.allPorts = new HashMap<DatapathId, Set<OFPort>>();
-		
-        clusters = new HashSet<Cluster>();
-        switchClusterMap = new HashMap<DatapathId, Cluster>();
-    }
-	
-	public TopologyInstance(Map<DatapathId, Set<OFPort>> switchPorts,
-                            Set<NodePortTuple> blockedPorts,
-                            Map<NodePortTuple, Set<Link>> switchPortLinks,
-                            Set<NodePortTuple> broadcastDomainPorts,
-                            Set<NodePortTuple> tunnelPorts){
-
-        // copy these structures
-		
-        this.switches = new HashSet<DatapathId>(switchPorts.keySet());
-        this.switchPorts = new HashMap<DatapathId, Set<OFPort>>();
-        for(DatapathId sw: switchPorts.keySet()) {
-            this.switchPorts.put(sw, new HashSet<OFPort>(switchPorts.get(sw)));
-        }       
-        this.blockedPorts = new HashSet<NodePortTuple>(blockedPorts);
-        this.switchPortLinks = new HashMap<NodePortTuple, Set<Link>>();
-        for(NodePortTuple npt: switchPortLinks.keySet()) {
-            this.switchPortLinks.put(npt,
-                                     new HashSet<Link>(switchPortLinks.get(npt)));
-        }
-        this.broadcastDomainPorts = new HashSet<NodePortTuple>(broadcastDomainPorts);
-        this.tunnelPorts = new HashSet<NodePortTuple>(tunnelPorts);
-
-        blockedLinks = new HashSet<Link>();
-        clusters = new HashSet<Cluster>();
-        switchClusterMap = new HashMap<DatapathId, Cluster>();
-        this.destinationRootedTrees = new HashMap<DatapathId, BroadcastTree>();
-        this.destinationRootedFullTrees= new HashMap<DatapathId, BroadcastTree>();
-		this.broadcastPortMap = new HashMap<DatapathId,Set<OFPort>>();
-		this.broadcastNodePorts= new HashSet<NodePortTuple>();
-        clusterBroadcastTrees = new HashMap<DatapathId, BroadcastTree>();
-        clusterPorts = new HashMap<DatapathId, Set<NodePortTuple>>();
-
-        pathcache = CacheBuilder.newBuilder().concurrencyLevel(4)
-                    .maximumSize(1000L)
-                    .build(
-                            new CacheLoader<RouteId, Route>() {
-                                public Route load(RouteId rid) {
-                                    return pathCacheLoader.load(rid);
-                                }
-                            });
-    }
 	
     public TopologyInstance(Map<DatapathId, Set<OFPort>> switchPorts,
                             Set<NodePortTuple> blockedPorts,
@@ -230,16 +147,16 @@ public class TopologyInstance {
         this.broadcastDomainPorts = new HashSet<NodePortTuple>(broadcastDomainPorts);
         this.tunnelPorts = new HashSet<NodePortTuple>(tunnelPorts);
 
-        blockedLinks = new HashSet<Link>();
+        this.blockedLinks = new HashSet<Link>();
        
-        clusters = new HashSet<Cluster>();
-        switchClusterMap = new HashMap<DatapathId, Cluster>();
+        this.clusters = new HashSet<Cluster>();
+        this.switchClusterMap = new HashMap<DatapathId, Cluster>();
         this.destinationRootedTrees = new HashMap<DatapathId, BroadcastTree>();
         this.destinationRootedFullTrees= new HashMap<DatapathId, BroadcastTree>();
 		this.broadcastNodePorts= new HashSet<NodePortTuple>();
 		this.broadcastPortMap = new HashMap<DatapathId,Set<OFPort>>();
-        clusterBroadcastTrees = new HashMap<DatapathId, BroadcastTree>();
-        clusterBroadcastNodePorts = new HashMap<DatapathId, Set<NodePortTuple>>();
+        this.clusterBroadcastTrees = new HashMap<DatapathId, BroadcastTree>();
+        this.clusterBroadcastNodePorts = new HashMap<DatapathId, Set<NodePortTuple>>();
 
         pathcache = CacheBuilder.newBuilder().concurrencyLevel(4)
                     .maximumSize(1000L)
@@ -250,11 +167,8 @@ public class TopologyInstance {
                                 }
                             });
     }
-
 	
     public void compute() {
-	
-       
         // Step 1: Compute clusters ignoring broadcast domain links
         // Create nodes for clusters in the higher level topology
         // Must ignore blocked links.
@@ -288,8 +202,9 @@ public class TopologyInstance {
         // clusters as possible.
         calculateAllBroadcastNodePorts();
 
-		//Step 6. Compute set of ports for broadcasting. Edge ports are included.
+		// Step 6. Compute set of ports for broadcasting. Edge ports are included.
        	calculateBroadcastPortMap();
+       	
         // Step 7. print topology.
         printTopology();
     }
@@ -297,9 +212,9 @@ public class TopologyInstance {
 	/*
 	 * Checks if OF port is edge port
 	 */
-    public boolean isEdge(DatapathId sw, OFPort portId){ 
+    public boolean isEdge(DatapathId sw, OFPort portId) { 
 		NodePortTuple np = new NodePortTuple(sw, portId);
-		if (allLinks.get(np) == null){
+		if (allLinks.get(np) == null || allLinks.get(np).isEmpty()) {
 			return true;
 		}
 		else {
@@ -316,17 +231,15 @@ public class TopologyInstance {
     }
 
     public void printTopology() {
-             
-        log.info("-----------------new version-----------------------");
-       // log.info("Links: {}",this.allLinks);
-		log.info("Broadcast tree: {}", finiteBroadcastTree);
-      //  log.info("broadcastDomainPorts: {}", broadcastDomainPorts);
-        log.info("tunnelPorts: {}", tunnelPorts);
-        log.info("clusters: {}", clusters);
-        log.info("destinationRootedFullTrees: {}", destinationRootedFullTrees);
-        log.info("BroadcastNodePorts: {}", broadcastNodePorts);
-        log.info("-----------------------------------------------");
-        
+        log.debug("-----------------Topology-----------------------");
+        log.debug("All Links: {}", allLinks);
+		log.debug("Broadcast Tree: {}", finiteBroadcastTree);
+        log.debug("Broadcast Domain Ports: {}", broadcastDomainPorts);
+        log.debug("Tunnel Ports: {}", tunnelPorts);
+        log.debug("Clusters: {}", clusters);
+        log.debug("Destination Rooted Full Trees: {}", destinationRootedFullTrees);
+        log.debug("Broadcast Node Ports: {}", broadcastNodePorts);
+        log.debug("-----------------------------------------------");  
     }
 
     protected void addLinksToOpenflowDomains() {
@@ -363,10 +276,6 @@ public class TopologyInstance {
      *
      * http://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm
      */
-    @LogMessageDoc(level="ERROR",
-            message="No DFS object for switch {} found.",
-            explanation="The internal state of the topology module is corrupt",
-            recommendation=LogMessageDoc.REPORT_CONTROLLER_BUG)
     public void identifyOpenflowDomains() {
         Map<DatapathId, ClusterDFS> dfsList = new HashMap<DatapathId, ClusterDFS>();
 
@@ -674,13 +583,11 @@ public class TopologyInstance {
             Map<Link, Integer> linkCost,
             boolean isDstRooted) {
     	HashMap<DatapathId, Link> nexthoplinks = new HashMap<DatapathId, Link>();
-    	//HashMap<Long, Long> nexthopnodes = new HashMap<Long, Long>();
     	HashMap<DatapathId, Integer> cost = new HashMap<DatapathId, Integer>();
     	int w;
     	
     	for (DatapathId node: links.keySet()) {
     		nexthoplinks.put(node, null);
-    		//nexthopnodes.put(node, null);
     		cost.put(node, MAX_PATH_WEIGHT);
     	}
 		
@@ -732,23 +639,22 @@ public class TopologyInstance {
     /*
 	 * Modification of the calculateShortestPathTreeInClusters (dealing with whole topology, not individual clusters)
 	 */
-    public void calculateAllShortestPaths(){
-	
+    public void calculateAllShortestPaths() {
     	this.broadcastNodePorts.clear();
     	this.destinationRootedFullTrees.clear();
     	Map<Link, Integer> linkCost = new HashMap<Link, Integer>();
         int tunnel_weight = switchPorts.size() + 1;
-		
-        for(NodePortTuple npt: tunnelPorts) {
+
+        for(NodePortTuple npt : tunnelPorts) {
             if (allLinks.get(npt) == null) continue;
-            for(Link link: allLinks.get(npt)) {
+            for(Link link : allLinks.get(npt)) {
                 if (link == null) continue;
                 linkCost.put(link, tunnel_weight);
             }
         }
         
         Map<DatapathId, Set<Link>> linkDpidMap = new HashMap<DatapathId, Set<Link>>();
-        for(DatapathId s: switches) {
+        for(DatapathId s : switches) {
             if (switchPorts.get(s) == null) continue;
             for (OFPort p: switchPorts.get(s)) {
                 NodePortTuple np = new NodePortTuple(s, p);
@@ -758,7 +664,7 @@ public class TopologyInstance {
                 		linkDpidMap.get(s).add(l);
                 	}
                 	else {
-                		linkDpidMap.put(s,new HashSet<Link>(Arrays.asList(l)));
+                		linkDpidMap.put(s, new HashSet<Link>(Arrays.asList(l)));
                 	}
                 }
             }
@@ -766,10 +672,11 @@ public class TopologyInstance {
         
         for (DatapathId node : linkDpidMap.keySet()) {
         	BroadcastTree tree = dijkstra(linkDpidMap, node, linkCost, true);
-            destinationRootedFullTrees.put(node,tree);
+
+            destinationRootedFullTrees.put(node, tree);
         }
 		//finiteBroadcastTree is randomly chosen in this implementation
-        if (this.destinationRootedFullTrees.size()>0){
+        if (this.destinationRootedFullTrees.size() > 0) {
 			this.finiteBroadcastTree =  destinationRootedFullTrees.values().iterator().next();
         }         	
     }
@@ -804,16 +711,14 @@ public class TopologyInstance {
             clusterBroadcastTrees.put(c.id, tree);
         }
     }
-	protected Set<NodePortTuple> getAllBroadcastNodePorts(){
+    
+	protected Set<NodePortTuple> getAllBroadcastNodePorts() {
 		return this.broadcastNodePorts;
-		
 	}
-    protected void calculateAllBroadcastNodePorts(){
 	
-		if (this.destinationRootedFullTrees.size()>0){
-			
+    protected void calculateAllBroadcastNodePorts() {
+		if (this.destinationRootedFullTrees.size() > 0) {
 			this.finiteBroadcastTree=destinationRootedFullTrees.values().iterator().next();
-			//Set<NodePortTuple> nptSet = new HashSet<NodePortTuple>();
 			Map<DatapathId, Link> links = finiteBroadcastTree.getLinks();
 			if (links == null) return;
 			for(DatapathId nodeId: links.keySet()) {
@@ -823,23 +728,19 @@ public class TopologyInstance {
 				NodePortTuple npt2 = new NodePortTuple(l.getDst(), l.getDstPort());
 				this.broadcastNodePorts.add(npt1);
 				this.broadcastNodePorts.add(npt2);
-				
-				
 			}    
-
-		}
-		
+		}		
     }
 
     protected void calculateBroadcastPortMap(){
 		this.broadcastPortMap.clear();
-		if (destinationRootedFullTrees.size()==0) return;
+		if (destinationRootedFullTrees.size() == 0) return;
 
-		for (DatapathId sw : this.switches){
+		for (DatapathId sw : this.switches) {
 			for (OFPort p : this.allPorts.get(sw)){
 				NodePortTuple npt = new NodePortTuple(sw, p);
-				if (isEdge(sw, p) || broadcastNodePorts.contains(npt)){ 
-					if(broadcastPortMap.containsKey(sw)) {
+				if (isEdge(sw, p) || broadcastNodePorts.contains(npt)) { 
+					if (broadcastPortMap.containsKey(sw)) {
                 		broadcastPortMap.get(sw).add(p);
                 	}
                 	else {
@@ -848,13 +749,11 @@ public class TopologyInstance {
 				}      		
 			}
 		}
-		//log.info("Map {}",broadcastPortMap);
     }
 	
     protected void calculateBroadcastNodePortsInClusters() {
-
         clusterBroadcastTrees.clear();
-
+        
         calculateBroadcastTreeInClusters();
 
         for(Cluster c: clusters) {
@@ -865,7 +764,7 @@ public class TopologyInstance {
             Set<NodePortTuple> nptSet = new HashSet<NodePortTuple>();
             Map<DatapathId, Link> links = tree.getLinks();
             if (links == null) continue;
-            for(DatapathId nodeId: links.keySet()) {
+            for (DatapathId nodeId: links.keySet()) {
                 Link l = links.get(nodeId);
                 if (l == null) continue;
                 NodePortTuple npt1 = new NodePortTuple(l.getSrc(), l.getSrcPort());
@@ -921,22 +820,20 @@ public class TopologyInstance {
         return result;
     }
 
+    /*
+     * Getter Functions
+     */
 
     protected int getCost(DatapathId srcId, DatapathId dstId) {
         BroadcastTree bt = destinationRootedTrees.get(dstId);
         if (bt == null) return -1;
         return (bt.getCost(srcId));
     }
-
-    /*
-     * Getter Functions
-     */
-
+    
     protected Set<Cluster> getClusters() {
         return clusters;
     }
 
-    // IRoutingEngineService interfaces
     protected boolean routeExists(DatapathId srcId, DatapathId dstId) {
         BroadcastTree bt = destinationRootedTrees.get(dstId);
         if (bt == null) return false;
@@ -948,11 +845,8 @@ public class TopologyInstance {
 	/*
 	* Calculates E2E route
 	*/
-    
     protected Route getRoute(ServiceChain sc, DatapathId srcId, OFPort srcPort,
             DatapathId dstId, OFPort dstPort, U64 cookie) {
-
-
         // Return null if the route source and destination are the
         // same switch ports.
         if (srcId.equals(dstId) && srcPort.equals(dstPort))
@@ -1058,8 +952,7 @@ public class TopologyInstance {
     /*
 	 * Takes finiteBroadcastTree into account to prevent loops in the network
 	 */
-    protected boolean
-    isIncomingBroadcastAllowedOnSwitchPort(DatapathId sw, OFPort portId) {
+    protected boolean isIncomingBroadcastAllowedOnSwitchPort(DatapathId sw, OFPort portId) {
         if (!isEdge(sw, portId)){       
             NodePortTuple npt = new NodePortTuple(sw, portId);
             if (broadcastNodePorts.contains(npt))
@@ -1069,15 +962,12 @@ public class TopologyInstance {
         return true;
     }
 
-
-    public boolean isConsistent(DatapathId oldSw, OFPort oldPort, DatapathId newSw,
-                                OFPort newPort) {
+    public boolean isConsistent(DatapathId oldSw, OFPort oldPort, DatapathId newSw, OFPort newPort) {
         if (isInternalToOpenflowDomain(newSw, newPort)) return true;
         return (oldSw.equals(newSw) && oldPort.equals(newPort));
     }
 
-    protected Set<NodePortTuple>
-    getBroadcastNodePortsInCluster(DatapathId sw) {
+    protected Set<NodePortTuple> getBroadcastNodePortsInCluster(DatapathId sw) {
         DatapathId clusterId = getOpenflowDomainId(sw);
         return clusterPorts.get(clusterId);
     }
@@ -1122,15 +1012,11 @@ public class TopologyInstance {
         return result;
     }
 
-    public NodePortTuple
-    getAllowedOutgoingBroadcastPort(DatapathId src, OFPort srcPort, DatapathId dst,
-                                    OFPort dstPort) {
+    public NodePortTuple getAllowedOutgoingBroadcastPort(DatapathId src, OFPort srcPort, DatapathId dst, OFPort dstPort) {
         return null;
     }
 
-    public NodePortTuple
-    getAllowedIncomingBroadcastPort(DatapathId src, OFPort srcPort) {
+    public NodePortTuple getAllowedIncomingBroadcastPort(DatapathId src, OFPort srcPort) {
         return null;
     }
 }
-

@@ -46,7 +46,8 @@ public interface ITopologyService extends IFloodlightService  {
 	/**
 	 * Returns a complete list of the network links, including intra-cluster and inter-cluster links. Links are grouped for each DatapathId separately.
 	 */
-	public Map<DatapathId, Set<Link>> AllLinks();
+
+	public Map<DatapathId, Set<Link>> getAllLinks();
 	
 	/**
 	 * Checks if port "p" is edge port or belongs to one of the detected network links.
@@ -56,7 +57,9 @@ public interface ITopologyService extends IFloodlightService  {
 	/**
 	 * Returns list of switch ports allowed for broadcast
 	 */
-	public Set<OFPort> swBroadcastPorts(DatapathId sw);
+
+	public Set<OFPort> getSwitchBroadcastPorts(DatapathId sw);
+	
 	/**
 	 * Returns the identifier of the L2 domain of a given switch.
 	 * @param switchId The DPID of the switch in long form
