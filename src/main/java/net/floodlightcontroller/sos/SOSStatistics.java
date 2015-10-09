@@ -57,10 +57,11 @@ public class SOSStatistics {
 	}
 	
 	public Set<String> getWhitelistEntries() {
-		Set<String> ret = new HashSet<String>(registered);
+		//Set<String> ret = new HashSet<String>(registered);
 		for (SOSWhitelistEntry e : registered) {
-			ret.add("");
+			//ret.add("");
 		}
+		return null;
 	}
 		
 	public void addActiveConnection(SOSConnection conn) {
@@ -74,7 +75,7 @@ public class SOSStatistics {
 	}
 	
 	public Set<String> getActiveConnections() {
-		
+		return null;
 	}
 	
 	public void addAgent(SOSAgent agent) {
@@ -86,6 +87,6 @@ public class SOSStatistics {
 	}
 	
 	public Set<String> getAgents() {
-		
+		return null;
 	}
 }
