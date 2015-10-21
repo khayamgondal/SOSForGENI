@@ -6,16 +6,19 @@ import org.projectfloodlight.openflow.types.TransportPort;
 public class SOSAgent extends SOSDevice {
 	private TransportPort data_port;
 	private TransportPort control_port;
+	private TransportPort feedback_port;
 	
 	public SOSAgent() {
 		super(SOSDeviceType.AGENT);
 		data_port = TransportPort.NONE;
 		control_port = TransportPort.NONE;
+		feedback_port = TransportPort.NONE;
 	}
-	public SOSAgent(IPv4Address ip, TransportPort data, TransportPort control) {
+	public SOSAgent(IPv4Address ip, TransportPort data, TransportPort control, TransportPort feedback) {
 		super(SOSDeviceType.AGENT, ip);
 		data_port = data;
 		control_port = control;
+		feedback_port = feedback;
 	}
 	
 	public TransportPort getDataPort() {
@@ -26,10 +29,14 @@ public class SOSAgent extends SOSDevice {
 		return control_port;
 	}
 	
+	public TransportPort getFeedbackPort() {
+		return feedback_port;
+	}
+	
 	@Override
 	public String toString() {
 		return "SOSAgent [ " + super.toString() + " data_port=" + data_port + ", control_port="
-				+ control_port + "]";
+				+ control_port + " feedback_port=" + feedback_port + "]";
 	}
 	
 	@Override
@@ -40,6 +47,8 @@ public class SOSAgent extends SOSDevice {
 				+ ((control_port == null) ? 0 : control_port.hashCode());
 		result = prime * result
 				+ ((data_port == null) ? 0 : data_port.hashCode());
+		result = prime * result
+				+ ((feedback_port == null) ? 0 : feedback_port.hashCode());
 		return result;
 	}
 	
@@ -61,6 +70,11 @@ public class SOSAgent extends SOSDevice {
 			if (other.data_port != null)
 				return false;
 		} else if (!data_port.equals(other.data_port))
+			return false;
+		if (feedback_port == null) {
+			if (other.feedback_port != null)
+				return false;
+		} else if (!feedback_port.equals(other.feedback_port))
 			return false;
 		return true;
 	}

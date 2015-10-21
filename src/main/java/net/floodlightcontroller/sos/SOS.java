@@ -9,6 +9,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -96,7 +97,6 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 
 	/* Keep tabs on our agents; make sure dev mgr will have them cached */
 	private class SOSAgentMonitor implements Runnable {
-
 		@Override
 		public void run() {
 			for (SOSAgent a : agents) {
@@ -118,7 +118,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 				} else { /* We don't know where the agent is -- flood ARP everywhere */
 					Set<DatapathId> switches = switchService.getAllSwitchDpids();
 					for (DatapathId sw : switches) {
-						log.debug("ARPing for agent {} on switch {}", a, sw);
+						log.warn("Agent {} does not have known attachment points. Flooding ARP on switch {}", a, sw);
 						arpForDevice(
 								a.getIPAddr(), 
 								(a.getIPAddr().and(IPv4Address.of("255.255.255.0"))).or(IPv4Address.of("0.0.0.254")) /* Doesn't matter really; must be same subnet though */, 
@@ -130,6 +130,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 				}
 				
 				if (sp != null) { /* We know specifically where the agent is located */
+					log.warn("ARPing for agent {} with known attachment point {}", a, sp);
 					arpForDevice(
 							a.getIPAddr(), 
 							(a.getIPAddr().and(IPv4Address.of("255.255.255.0"))).or(IPv4Address.of("0.0.0.254")) /* Doesn't matter really; must be same subnet though */, 
@@ -502,7 +503,6 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	@Override
 	public synchronized net.floodlightcontroller.core.IListener.Command receive(
 			IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
-
 		/*
 		 * If we're disabled, then just stop now
 		 * and let Forwarding/Hub handle the connection.
@@ -620,7 +620,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 					sendInfoToAgent(cntx, newSOSconnection, false); // foreign
 
 				} else if (packetStatus == SOSPacketStatus.ACTIVE_SERVER_SIDE_AGENT_TO_SERVER) {					
-					SOSConnection conn = sosConnections.getConnectionFromIP(l3.getDestinationAddress(), l4.getDestinationPort());
+					SOSConnection conn = sosConnections.getConnection(l3.getDestinationAddress(), l4.getDestinationPort());
 
 					if (conn == null) {
 						log.error("Should have found an SOSConnection in need of a server-side agent TCP port!");
@@ -644,10 +644,37 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 				/* We don't want other modules messing with our SOS TCP session (namely Forwarding/Hub) */
 				return Command.STOP;
 
-			} // END IF TCP packet
-		} // END IF IPv4 packet
+			} /* END IF TCP packet */
+			else if (l3.getProtocol().equals(IpProtocol.UDP)) {
+				UDP l4 = (UDP) l3.getPayload();
+				
+				for (SOSAgent agent : agents) {
+					if (agent.getIPAddr().equals(l3.getSourceAddress()) /* FROM known agent */
+							&& agent.getFeedbackPort().equals(l4.getDestinationPort())) { /* TO our feedback port */
+						UUID uuid = UUID.fromString(new String(((Data) l4.getPayload()).getData() /* TODO , "ASCII-US" */)); 
+						log.debug("Got termination message from agent {} for UUID {}", agent.getIPAddr(), uuid);
+						
+						SOSConnection conn = sosConnections.getConnection(uuid);
+						if (conn == null) {
+							log.error("Could not locate UUID {} in connection storage. Report SOS bug", uuid);
+							return Command.STOP; /* this WAS for us, but there was an error; no need to foward */
+						}
+						
+						/* We found it; remove flows; delete from storage */
+						for (String flowName : conn.getFlowNames()) {
+							log.trace("Deleting flow {}", flowName);
+							sfp.deleteFlow(flowName);
+						}
+						
+						log.warn("Removing expired connection {}", uuid);
+						sosConnections.removeConnection(uuid);
+						break;
+					}
+				} /* END FROM-AGENT LOOKUP */
+			} /* END IF UDP packet */
+		} /* END IF IPv4 packet */
 		return Command.CONTINUE;
-	} // END of receive(pkt)
+	} /* END of receive(pkt) */
 
 	/**
 	 * Lookup an agent based on the client's current location. Shortest path

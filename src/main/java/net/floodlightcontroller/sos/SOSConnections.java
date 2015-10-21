@@ -3,6 +3,7 @@ package net.floodlightcontroller.sos;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.UUID;
 
 import net.floodlightcontroller.sos.ISOSService.SOSReturnCode;
 
@@ -47,7 +48,7 @@ public class SOSConnections  {
 				serverToAgent, numSockets,
 				queueCapacity, bufferSize,
 				flowTimeout)); 
-		return getConnectionFromIP(clientToAgent.getSrcDevice().getIPAddr(), ((SOSClient) clientToAgent.getSrcDevice()).getTcpPort());
+		return getConnection(clientToAgent.getSrcDevice().getIPAddr(), ((SOSClient) clientToAgent.getSrcDevice()).getTcpPort());
 	}
 	
 	/**
@@ -69,17 +70,46 @@ public class SOSConnections  {
 	}
 	
 	/**
+	 * Remove a terminated connection based on the transfer ID.
+	 * @param uuid
+	 * @return
+	 */
+	public boolean removeConnection(UUID uuid) {
+		for (SOSConnection conn : connections) {
+			if (conn.getTransferID().equals(uuid)) {
+				connections.remove(conn);
+				return true;
+			}
+		}
+		return false;
+	}
+	
+	/**
 	 * Lookup an ongoing connection based on the server or client
 	 * IP address and TCP port
 	 * @param ip
 	 * @param port
 	 * @return
 	 */
-	public SOSConnection getConnectionFromIP(IPv4Address ip, TransportPort port) {
+	public SOSConnection getConnection(IPv4Address ip, TransportPort port) {
 		for (SOSConnection conn : connections) {
 			if (conn.getClient().getIPAddr().equals(ip) && conn.getClient().getTcpPort().equals(port)) {
 				return conn;
 			} else if (conn.getServer().getIPAddr().equals(ip) && conn.getServer().getTcpPort().equals(port)) {
+				return conn;
+			}
+		}
+		return null;
+	}
+	
+	/**
+	 * Lookup an ongoing connection based on the transfer ID.
+	 * @param uuid
+	 * @return
+	 */
+	public SOSConnection getConnection(UUID uuid) {
+		for (SOSConnection conn : connections) {
+			if (conn.getTransferID().equals(uuid)) {
 				return conn;
 			}
 		}

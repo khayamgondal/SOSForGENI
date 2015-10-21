@@ -29,6 +29,7 @@ public class AgentResource extends ServerResource {
 	protected static final String STR_IP = "ip-address";
 	protected static final String STR_DATA_PORT = "data-port";
 	protected static final String STR_CONTROL_PORT = "control-port";
+	protected static final String STR_FEEDBACK_PORT = "feedback-port";
 
 	@Put
 	@Post
@@ -100,6 +101,7 @@ public class AgentResource extends ServerResource {
 		IPv4Address ip = IPv4Address.NONE;
 		TransportPort dataPort = TransportPort.NONE;
 		TransportPort controlPort = TransportPort.NONE;
+		TransportPort feedbackPort = TransportPort.NONE;
 
 		if (json == null || json.isEmpty()) {
 			return null;
@@ -145,14 +147,23 @@ public class AgentResource extends ServerResource {
 					} catch (IllegalArgumentException e) {
 						log.error("Invalid control port {}", value);
 					}
+				} else if (key.equals(STR_FEEDBACK_PORT)) {
+					try {
+						feedbackPort = TransportPort.of(Integer.parseInt(value));
+					} catch (IllegalArgumentException e) {
+						log.error("Invalid feedback port {}", value);
+					}
 				}
 			}
 		} catch (IOException e) {
 			log.error("Error parsing JSON into SOSAgent {}", e);
 		}
 		
-		if (!ip.equals(IPv4Address.NONE) && !dataPort.equals(TransportPort.NONE) && !controlPort.equals(TransportPort.NONE)) {
-			return new SOSAgent(ip, dataPort, controlPort);
+		if (!ip.equals(IPv4Address.NONE) 
+				&& !dataPort.equals(TransportPort.NONE) 
+				&& !controlPort.equals(TransportPort.NONE)
+				&& !feedbackPort.equals(TransportPort.NONE)) {
+			return new SOSAgent(ip, dataPort, controlPort, feedbackPort);
 		} else {
 			return null;
 		}
