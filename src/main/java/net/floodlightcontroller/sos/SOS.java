@@ -9,6 +9,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 import org.projectfloodlight.openflow.protocol.match.MatchField;
 import org.projectfloodlight.openflow.protocol.OFFactory;
@@ -58,6 +60,7 @@ import net.floodlightcontroller.routing.IRoutingService;
 import net.floodlightcontroller.routing.Route;
 import net.floodlightcontroller.sos.web.SOSWebRoutable;
 import net.floodlightcontroller.staticflowentry.IStaticFlowEntryPusherService;
+import net.floodlightcontroller.threadpool.IThreadPoolService;
 import net.floodlightcontroller.topology.ITopologyService;
 
 /**
@@ -74,6 +77,9 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	protected static IStaticFlowEntryPusherService sfp;
 	private static IRestApiService restApiService;
 	private static ITopologyService topologyService;
+	private static IThreadPoolService threadPoolService;
+	
+	private static ScheduledFuture<?> agentMonitor;
 
 	private static MacAddress controllerMac;
 
@@ -88,6 +94,54 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	private static int agentNumParallelSockets;
 	private static short flowTimeout;
 
+	/* Keep tabs on our agents; make sure dev mgr will have them cached */
+	private class SOSAgentMonitor implements Runnable {
+
+		@Override
+		public void run() {
+			for (SOSAgent a : agents) {
+				/* Lookup agent's last known location */
+				Iterator<? extends IDevice> i = deviceService.queryDevices(MacAddress.NONE, null, a.getIPAddr(), IPv6Address.NONE, DatapathId.NONE, OFPort.ZERO);
+				SwitchPort sp = null;
+				if (i.hasNext()) {
+					IDevice d = i.next();
+					SwitchPort[] agentAps = d.getAttachmentPoints();
+					if (agentAps.length > 0) {
+						SwitchPort agentTrueAp = findTrueAttachmentPoint(agentAps);
+						if (agentTrueAp == null) {
+							log.error("Could not determine true attachment point for agent {} when ARPing for agent. Report SOS bug.", a);
+							continue;
+						} else {
+							sp = agentTrueAp;
+						}
+					}
+				} else { /* We don't know where the agent is -- flood ARP everywhere */
+					Set<DatapathId> switches = switchService.getAllSwitchDpids();
+					for (DatapathId sw : switches) {
+						log.debug("ARPing for agent {} on switch {}", a, sw);
+						arpForDevice(
+								a.getIPAddr(), 
+								(a.getIPAddr().and(IPv4Address.of("255.255.255.0"))).or(IPv4Address.of("0.0.0.254")) /* Doesn't matter really; must be same subnet though */, 
+								MacAddress.BROADCAST /* Use broadcast as to not potentially confuse a host's ARP cache */, 
+								VlanVid.ZERO /* Switch will push correct VLAN tag if required */, 
+								switchService.getSwitch(sw)
+								);
+					}
+				}
+				
+				if (sp != null) { /* We know specifically where the agent is located */
+					arpForDevice(
+							a.getIPAddr(), 
+							(a.getIPAddr().and(IPv4Address.of("255.255.255.0"))).or(IPv4Address.of("0.0.0.254")) /* Doesn't matter really; must be same subnet though */, 
+							MacAddress.BROADCAST /* Use broadcast as to not potentially confuse a host's ARP cache */, 
+							VlanVid.ZERO /* Switch will push correct VLAN tag if required */, 
+							switchService.getSwitch(sp.getSwitchDPID())
+							);
+				}
+			}
+		}
+	}
+
 	@Override
 	public Collection<Class<? extends IFloodlightService>> getModuleDependencies() {
 		Collection<Class<? extends IFloodlightService>> l = 
@@ -99,6 +153,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		l.add(IStaticFlowEntryPusherService.class);
 		l.add(IRestApiService.class);
 		l.add(ITopologyService.class);
+		l.add(IThreadPoolService.class);
 		return l;
 	}
 
@@ -111,6 +166,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		sfp = context.getServiceImpl(IStaticFlowEntryPusherService.class);
 		restApiService = context.getServiceImpl(IRestApiService.class);
 		topologyService = context.getServiceImpl(ITopologyService.class);
+		threadPoolService = context.getServiceImpl(IThreadPoolService.class);
 
 		agents = new HashSet<SOSAgent>();
 		sosConnections = new SOSConnections();
@@ -875,6 +931,15 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 						switchService.getSwitch(sw)
 						);
 			}
+			
+			if (agentMonitor == null) {
+				agentMonitor = threadPoolService.getScheduledExecutor().scheduleAtFixedRate(
+						new SOSAgentMonitor(), 
+						/* initial delay */ 30, 
+						/* interval */ 20, 
+						TimeUnit.SECONDS);
+			}
+			
 			return SOSReturnCode.AGENT_ADDED;
 		}
 	}
