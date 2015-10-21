@@ -79,7 +79,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	private static IRestApiService restApiService;
 	private static ITopologyService topologyService;
 	private static IThreadPoolService threadPoolService;
-	
+
 	private static ScheduledFuture<?> agentMonitor;
 
 	private static MacAddress controllerMac;
@@ -128,7 +128,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 								);
 					}
 				}
-				
+
 				if (sp != null) { /* We know specifically where the agent is located */
 					log.warn("ARPing for agent {} with known attachment point {}", a, sp);
 					arpForDevice(
@@ -575,6 +575,18 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 					SOSRoute clientRoute = routeToFriendlyNeighborhoodAgent(client, srcDevice.getAttachmentPoints(), IPv4Address.NONE);
 					if (clientRoute == null) {
 						log.error("Could not compute route from client {} to neighborhood agent. Report SOS bug.", client);
+						for (SOSAgent agent : agents) {
+							log.warn("Possibly lost agent {}. Emergency ARPing", agent);
+							for (DatapathId dpid : switchService.getAllSwitchDpids()) {
+								arpForDevice(
+										agent.getIPAddr(), 
+										(agent.getIPAddr().and(IPv4Address.of("255.255.255.0"))).or(IPv4Address.of("0.0.0.254")) /* Doesn't matter really; must be same subnet though */, 
+										MacAddress.BROADCAST /* Use broadcast as to not potentially confuse a host's ARP cache */, 
+										VlanVid.ZERO /* Switch will push correct VLAN tag if required */, 
+										switchService.getSwitch(dpid)
+										);
+							}
+						}
 						return Command.STOP;
 					} else {
 						log.debug("Client-to-agent route {}", clientRoute);
@@ -586,6 +598,18 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 							clientRoute.getRoute() != null ? clientRoute.getDstDevice().getIPAddr() : IPv4Address.NONE);
 					if (serverRoute == null) {
 						log.error("Could not compute route from server {} to neighborhood agent. Report SOS bug.", server);
+						for (SOSAgent agent : agents) {
+							log.warn("Possibly lost agent {}. Emergency ARPing", agent);
+							for (DatapathId dpid : switchService.getAllSwitchDpids()) {
+								arpForDevice(
+										agent.getIPAddr(), 
+										(agent.getIPAddr().and(IPv4Address.of("255.255.255.0"))).or(IPv4Address.of("0.0.0.254")) /* Doesn't matter really; must be same subnet though */, 
+										MacAddress.BROADCAST /* Use broadcast as to not potentially confuse a host's ARP cache */, 
+										VlanVid.ZERO /* Switch will push correct VLAN tag if required */, 
+										switchService.getSwitch(dpid)
+										);
+							}
+						}
 						return Command.STOP;
 					} else {
 						log.debug("Server-to-agent route {}", serverRoute);
@@ -647,25 +671,25 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			} /* END IF TCP packet */
 			else if (l3.getProtocol().equals(IpProtocol.UDP)) {
 				UDP l4 = (UDP) l3.getPayload();
-				
+
 				for (SOSAgent agent : agents) {
 					if (agent.getIPAddr().equals(l3.getSourceAddress()) /* FROM known agent */
 							&& agent.getFeedbackPort().equals(l4.getDestinationPort())) { /* TO our feedback port */
 						UUID uuid = UUID.fromString(new String(((Data) l4.getPayload()).getData() /* TODO , "ASCII-US" */)); 
 						log.debug("Got termination message from agent {} for UUID {}", agent.getIPAddr(), uuid);
-						
+
 						SOSConnection conn = sosConnections.getConnection(uuid);
 						if (conn == null) {
 							log.error("Could not locate UUID {} in connection storage. Report SOS bug", uuid);
 							return Command.STOP; /* this WAS for us, but there was an error; no need to foward */
 						}
-						
+
 						/* We found it; remove flows; delete from storage */
 						for (String flowName : conn.getFlowNames()) {
 							log.trace("Deleting flow {}", flowName);
 							sfp.deleteFlow(flowName);
 						}
-						
+
 						log.warn("Removing expired connection {}", uuid);
 						sosConnections.removeConnection(uuid);
 						break;
@@ -854,7 +878,6 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	 * @param sw
 	 */
 	private void arpForDevice(IPv4Address dstIp, IPv4Address srcIp, MacAddress srcMac, VlanVid vlan, IOFSwitch sw) {
-		log.warn("ARPing for {} from {}", dstIp, srcIp);
 		IPacket arpRequest = new Ethernet()
 		.setSourceMACAddress(srcMac)
 		.setDestinationMACAddress(MacAddress.BROADCAST)
@@ -959,15 +982,15 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 						switchService.getSwitch(sw)
 						);
 			}
-			
+
 			if (agentMonitor == null) {
 				agentMonitor = threadPoolService.getScheduledExecutor().scheduleAtFixedRate(
 						new SOSAgentMonitor(), 
-						/* initial delay */ 30, 
-						/* interval */ 20, 
+						/* initial delay */ 15, 
+						/* interval */ 15, 
 						TimeUnit.SECONDS);
 			}
-			
+
 			return SOSReturnCode.AGENT_ADDED;
 		}
 	}
