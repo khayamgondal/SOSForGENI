@@ -100,6 +100,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		@Override
 		public void run() {
 			try {
+				log.info("ARP THREAD, AGENTS: {}", agents);
 				for (SOSAgent a : agents) {
 					/* Lookup agent's last known location */
 					Iterator<? extends IDevice> i = deviceService.queryDevices(MacAddress.NONE, null, a.getIPAddr(), IPv6Address.NONE, DatapathId.NONE, OFPort.ZERO);
