@@ -979,8 +979,11 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			log.error("Found pre-existing agent during agent add. Not adding new agent {}", agent);
 			return SOSReturnCode.ERR_DUPLICATE_AGENT;
 		} else {
-			log.warn("Agent {} added.", agent);
-			agents.add(agent);
+			if (agents.add(agent)) { 
+				log.warn("Agent {} added.", agent);
+			} else {
+				log.error("Error. Agent {} NOT added.", agent);
+			}
 			Set<DatapathId> switches = switchService.getAllSwitchDpids();
 			for (DatapathId sw : switches) {
 				log.debug("ARPing for agent {} on switch {}", agent, sw);
