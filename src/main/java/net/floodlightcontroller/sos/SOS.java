@@ -815,6 +815,11 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		if (aps != null) {
 			for (SwitchPort ap : aps) {
 				Set<OFPort> portsOnLinks = topologyService.getPortsWithLinks(ap.getSwitchDPID());
+				if (portsOnLinks == null) {
+					log.error("Error looking up ports with links from topology service for switch {}", ap.getSwitchDPID());
+					continue;
+				}
+				
 				if (!portsOnLinks.contains(ap.getPort())) {
 					log.debug("Found 'true' attachment point of {}", ap);
 					return ap;
