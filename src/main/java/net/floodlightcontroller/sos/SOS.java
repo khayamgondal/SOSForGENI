@@ -110,15 +110,27 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 						SwitchPort agentTrueAp = findTrueAttachmentPoint(agentAps);
 						if (agentTrueAp == null) {
 							log.error("Could not determine true attachment point for agent {} when ARPing for agent. Report SOS bug.", a);
-							continue;
 						} else {
 							sp = agentTrueAp;
 						}
 					}
+				} else {
+					log.error("Device manager could not locate agent {}", a);
+				}
+
+				if (sp != null) { /* We know specifically where the agent is located */
+					log.warn("ARPing for agent {} with known true attachment point {}", a, sp);
+					arpForDevice(
+							a.getIPAddr(), 
+							(a.getIPAddr().and(IPv4Address.of("255.255.255.0"))).or(IPv4Address.of("0.0.0.254")) /* Doesn't matter really; must be same subnet though */, 
+							MacAddress.BROADCAST /* Use broadcast as to not potentially confuse a host's ARP cache */, 
+							VlanVid.ZERO /* Switch will push correct VLAN tag if required */, 
+							switchService.getSwitch(sp.getSwitchDPID())
+							);
 				} else { /* We don't know where the agent is -- flood ARP everywhere */
 					Set<DatapathId> switches = switchService.getAllSwitchDpids();
 					for (DatapathId sw : switches) {
-						log.warn("Agent {} does not have known attachment points. Flooding ARP on switch {}", a, sw);
+						log.warn("Agent {} does not have known/true attachment point(s). Flooding ARP on switch {}", a, sw);
 						arpForDevice(
 								a.getIPAddr(), 
 								(a.getIPAddr().and(IPv4Address.of("255.255.255.0"))).or(IPv4Address.of("0.0.0.254")) /* Doesn't matter really; must be same subnet though */, 
@@ -127,17 +139,6 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 								switchService.getSwitch(sw)
 								);
 					}
-				}
-
-				if (sp != null) { /* We know specifically where the agent is located */
-					log.warn("ARPing for agent {} with known attachment point {}", a, sp);
-					arpForDevice(
-							a.getIPAddr(), 
-							(a.getIPAddr().and(IPv4Address.of("255.255.255.0"))).or(IPv4Address.of("0.0.0.254")) /* Doesn't matter really; must be same subnet though */, 
-							MacAddress.BROADCAST /* Use broadcast as to not potentially confuse a host's ARP cache */, 
-							VlanVid.ZERO /* Switch will push correct VLAN tag if required */, 
-							switchService.getSwitch(sp.getSwitchDPID())
-							);
 				}
 			}
 		}
@@ -986,7 +987,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			if (agentMonitor == null) {
 				agentMonitor = threadPoolService.getScheduledExecutor().scheduleAtFixedRate(
 						new SOSAgentMonitor(), 
-						/* initial delay */ 15, 
+						/* initial delay */ 20, 
 						/* interval */ 15, 
 						TimeUnit.SECONDS);
 			}
