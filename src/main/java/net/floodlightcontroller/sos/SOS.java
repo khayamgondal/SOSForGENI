@@ -99,47 +99,51 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	private class SOSAgentMonitor implements Runnable {
 		@Override
 		public void run() {
-			for (SOSAgent a : agents) {
-				/* Lookup agent's last known location */
-				Iterator<? extends IDevice> i = deviceService.queryDevices(MacAddress.NONE, null, a.getIPAddr(), IPv6Address.NONE, DatapathId.NONE, OFPort.ZERO);
-				SwitchPort sp = null;
-				if (i.hasNext()) {
-					IDevice d = i.next();
-					SwitchPort[] agentAps = d.getAttachmentPoints();
-					if (agentAps.length > 0) {
-						SwitchPort agentTrueAp = findTrueAttachmentPoint(agentAps);
-						if (agentTrueAp == null) {
-							log.error("Could not determine true attachment point for agent {} when ARPing for agent. Report SOS bug.", a);
-						} else {
-							sp = agentTrueAp;
+			try {
+				for (SOSAgent a : agents) {
+					/* Lookup agent's last known location */
+					Iterator<? extends IDevice> i = deviceService.queryDevices(MacAddress.NONE, null, a.getIPAddr(), IPv6Address.NONE, DatapathId.NONE, OFPort.ZERO);
+					SwitchPort sp = null;
+					if (i.hasNext()) {
+						IDevice d = i.next();
+						SwitchPort[] agentAps = d.getAttachmentPoints();
+						if (agentAps.length > 0) {
+							SwitchPort agentTrueAp = findTrueAttachmentPoint(agentAps);
+							if (agentTrueAp == null) {
+								log.error("Could not determine true attachment point for agent {} when ARPing for agent. Report SOS bug.", a);
+							} else {
+								sp = agentTrueAp;
+							}
 						}
+					} else {
+						log.error("Device manager could not locate agent {}", a);
 					}
-				} else {
-					log.error("Device manager could not locate agent {}", a);
-				}
 
-				if (sp != null) { /* We know specifically where the agent is located */
-					log.warn("ARPing for agent {} with known true attachment point {}", a, sp);
-					arpForDevice(
-							a.getIPAddr(), 
-							(a.getIPAddr().and(IPv4Address.of("255.255.255.0"))).or(IPv4Address.of("0.0.0.254")) /* Doesn't matter really; must be same subnet though */, 
-							MacAddress.BROADCAST /* Use broadcast as to not potentially confuse a host's ARP cache */, 
-							VlanVid.ZERO /* Switch will push correct VLAN tag if required */, 
-							switchService.getSwitch(sp.getSwitchDPID())
-							);
-				} else { /* We don't know where the agent is -- flood ARP everywhere */
-					Set<DatapathId> switches = switchService.getAllSwitchDpids();
-					for (DatapathId sw : switches) {
-						log.warn("Agent {} does not have known/true attachment point(s). Flooding ARP on switch {}", a, sw);
+					if (sp != null) { /* We know specifically where the agent is located */
+						log.warn("ARPing for agent {} with known true attachment point {}", a, sp);
 						arpForDevice(
 								a.getIPAddr(), 
 								(a.getIPAddr().and(IPv4Address.of("255.255.255.0"))).or(IPv4Address.of("0.0.0.254")) /* Doesn't matter really; must be same subnet though */, 
 								MacAddress.BROADCAST /* Use broadcast as to not potentially confuse a host's ARP cache */, 
 								VlanVid.ZERO /* Switch will push correct VLAN tag if required */, 
-								switchService.getSwitch(sw)
+								switchService.getSwitch(sp.getSwitchDPID())
 								);
+					} else { /* We don't know where the agent is -- flood ARP everywhere */
+						Set<DatapathId> switches = switchService.getAllSwitchDpids();
+						for (DatapathId sw : switches) {
+							log.warn("Agent {} does not have known/true attachment point(s). Flooding ARP on switch {}", a, sw);
+							arpForDevice(
+									a.getIPAddr(), 
+									(a.getIPAddr().and(IPv4Address.of("255.255.255.0"))).or(IPv4Address.of("0.0.0.254")) /* Doesn't matter really; must be same subnet though */, 
+									MacAddress.BROADCAST /* Use broadcast as to not potentially confuse a host's ARP cache */, 
+									VlanVid.ZERO /* Switch will push correct VLAN tag if required */, 
+									switchService.getSwitch(sw)
+									);
+						}
 					}
 				}
+			} catch (Exception e) {
+				log.error("Caught exception in ARP monitor thread: {}", e);
 			}
 		}
 	}
@@ -985,6 +989,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			}
 
 			if (agentMonitor == null) {
+				log.warn("Configuring agent ARP monitor thread");
 				agentMonitor = threadPoolService.getScheduledExecutor().scheduleAtFixedRate(
 						new SOSAgentMonitor(), 
 						/* initial delay */ 20, 
