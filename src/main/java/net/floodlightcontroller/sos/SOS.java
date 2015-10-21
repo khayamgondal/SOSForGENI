@@ -854,6 +854,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	 * @param sw
 	 */
 	private void arpForDevice(IPv4Address dstIp, IPv4Address srcIp, MacAddress srcMac, VlanVid vlan, IOFSwitch sw) {
+		log.warn("ARPing for {} from {}", dstIp, srcIp);
 		IPacket arpRequest = new Ethernet()
 		.setSourceMACAddress(srcMac)
 		.setDestinationMACAddress(MacAddress.BROADCAST)
