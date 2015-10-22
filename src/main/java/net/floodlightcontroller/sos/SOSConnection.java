@@ -34,8 +34,10 @@ public class SOSConnection {
 			throw new IllegalArgumentException("SOSRoute serverToAgent must be of type server-to-agent");
 		}
 		this.serverToAgent = serverToAgent;
-		this.serverAgentPort = TransportPort.NONE; // This cannot be known when the first TCP packet is received. It will be learned on the dst-side
+		this.serverAgentPort = TransportPort.NONE; /* This cannot be known when the first TCP packet is received. It will be learned on the server-side */
 		this.transferId = UUID.randomUUID();
+		((SOSAgent) this.clientToAgent.getDstDevice()).addTransferId(this.transferId); /* agents can be shared; update them w/UUID */
+		((SOSAgent) this.serverToAgent.getDstDevice()).addTransferId(this.transferId);
 		this.numParallelSockets = numSockets;
 		this.queueCapacity = queueCapacity;
 		this.bufferSize = bufferSize;

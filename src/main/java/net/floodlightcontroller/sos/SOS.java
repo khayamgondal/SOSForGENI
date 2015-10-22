@@ -100,7 +100,6 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		@Override
 		public void run() {
 			try {
-				log.info("ARP THREAD, AGENTS: {}", agents);
 				for (SOSAgent a : agents) {
 					/* Lookup agent's last known location */
 					Iterator<? extends IDevice> i = deviceService.queryDevices(MacAddress.NONE, null, a.getIPAddr(), IPv6Address.NONE, DatapathId.NONE, OFPort.ZERO);
@@ -131,8 +130,9 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 								);
 					} else { /* We don't know where the agent is -- flood ARP everywhere */
 						Set<DatapathId> switches = switchService.getAllSwitchDpids();
+						log.warn("Agent {} does not have known/true attachment point(s). Flooding ARP on all switches", a);
 						for (DatapathId sw : switches) {
-							log.warn("Agent {} does not have known/true attachment point(s). Flooding ARP on switch {}", a, sw);
+							log.debug("Agent {} does not have known/true attachment point(s). Flooding ARP on switch {}", a, sw);
 							arpForDevice(
 									a.getIPAddr(), 
 									(a.getIPAddr().and(IPv4Address.of("255.255.255.0"))).or(IPv4Address.of("0.0.0.254")) /* Doesn't matter really; must be same subnet though */, 
@@ -634,6 +634,11 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 							agentNumParallelSockets, agentQueueCapacity, bufferSize, flowTimeout);
 					log.debug("Starting new SOS session: \r\n" + newSOSconnection.toString());
 
+					/* Send UDP messages to the home and foreign agents */
+					log.debug("Sending UDP information packets to client-side and server-side agents");
+					sendInfoToAgent(cntx, newSOSconnection, true); /* home */
+					sendInfoToAgent(cntx, newSOSconnection, false); /* foreign */
+					
 					/* Push flows and add flow names to connection (for removal upon termination) */
 					log.debug("Pushing client-side SOS flows");
 					pushRoute(newSOSconnection.getClientSideRoute(), newSOSconnection);
@@ -643,11 +648,6 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 					/* Send the initial TCP packet that triggered this module to the home agent */
 					log.debug("Sending client-side spark packet to client-side agent");
 					sendClientSideAgentSparkPacket(cntx, l2, newSOSconnection);
-
-					/* Send UDP messages to the home and foreign agents */
-					log.debug("Sending UDP information packets to client-side and server-side agents");
-					sendInfoToAgent(cntx, newSOSconnection, true); // home
-					sendInfoToAgent(cntx, newSOSconnection, false); // foreign
 
 				} else if (packetStatus == SOSPacketStatus.ACTIVE_SERVER_SIDE_AGENT_TO_SERVER) {					
 					SOSConnection conn = sosConnections.getConnection(l3.getDestinationAddress(), l4.getDestinationPort());
@@ -681,13 +681,13 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 				for (SOSAgent agent : agents) {
 					if (agent.getIPAddr().equals(l3.getSourceAddress()) /* FROM known agent */
 							&& agent.getFeedbackPort().equals(l4.getDestinationPort())) { /* TO our feedback port */
-						UUID uuid = UUID.fromString(new String(((Data) l4.getPayload()).getData() /* TODO , "ASCII-US" */)); 
+						UUID uuid = UUID.fromString(new String(((Data) l4.getPayload()).getData() /* TODO , "ASCII-US or UTF-8?" */)); 
 						log.debug("Got termination message from agent {} for UUID {}", agent.getIPAddr(), uuid);
 
 						SOSConnection conn = sosConnections.getConnection(uuid);
 						if (conn == null) {
 							log.error("Could not locate UUID {} in connection storage. Report SOS bug", uuid);
-							return Command.STOP; /* this WAS for us, but there was an error; no need to foward */
+							return Command.STOP; /* this WAS for us, but there was an error; no need to forward */
 						}
 
 						/* We found it; remove flows; delete from storage */

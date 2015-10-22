@@ -62,8 +62,9 @@ public class SOSConnections  {
 		for (SOSConnection conn : connections) {
 			if (conn.getClient().getIPAddr().equals(ip) && conn.getClient().getTcpPort().equals(port) ||
 					conn.getServer().getIPAddr().equals(ip) && conn.getServer().getTcpPort().equals(port)) {
-				connections.remove(conn);
-				return true;
+				return (connections.remove(conn)
+						&& conn.getClientSideAgent().removeTransferId(conn.getTransferID())
+						&& conn.getServerSideAgent().removeTransferId(conn.getTransferID()));
 			}
 		}
 		return false;
