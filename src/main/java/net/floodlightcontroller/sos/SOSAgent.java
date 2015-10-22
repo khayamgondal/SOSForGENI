@@ -1,5 +1,6 @@
 package net.floodlightcontroller.sos;
 
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -7,7 +8,12 @@ import java.util.UUID;
 import org.projectfloodlight.openflow.types.IPv4Address;
 import org.projectfloodlight.openflow.types.TransportPort;
 
-public class SOSAgent extends SOSDevice {
+import net.floodlightcontroller.sos.web.SOSAgentSerializer;
+
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+
+@JsonSerialize(using=SOSAgentSerializer.class)
+public class SOSAgent extends SOSDevice implements ISOSAgent {
 	private TransportPort data_port;
 	private TransportPort control_port;
 	private TransportPort feedback_port;
@@ -29,14 +35,17 @@ public class SOSAgent extends SOSDevice {
 		active_transfers = new HashSet<UUID>();
 	}
 	
+	@Override
 	public TransportPort getDataPort() {
 		return data_port;
 	}
 	
+	@Override
 	public TransportPort getControlPort() {
 		return control_port;
 	}
 	
+	@Override
 	public TransportPort getFeedbackPort() {
 		return feedback_port;
 	}
@@ -55,6 +64,11 @@ public class SOSAgent extends SOSDevice {
 	
 	public int getNumTransfersServing() {
 		return active_transfers.size();
+	}
+	
+	@Override
+	public Set<UUID> getActiveTransfers() {
+		return Collections.unmodifiableSet(active_transfers);
 	}
 	
 	@Override

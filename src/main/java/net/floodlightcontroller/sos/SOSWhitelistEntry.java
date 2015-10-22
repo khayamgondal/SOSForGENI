@@ -3,7 +3,12 @@ package net.floodlightcontroller.sos;
 import org.projectfloodlight.openflow.types.IPv4Address;
 import org.projectfloodlight.openflow.types.TransportPort;
 
-public class SOSWhitelistEntry {
+import net.floodlightcontroller.sos.web.SOSWhitelistEntrySerializer;
+
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+
+@JsonSerialize(using=SOSWhitelistEntrySerializer.class)
+public class SOSWhitelistEntry implements ISOSWhitelistEntry {
 	private IPv4Address serverIp;
 	private IPv4Address clientIp;
 	private TransportPort serverPort;
@@ -28,14 +33,17 @@ public class SOSWhitelistEntry {
 		return new SOSWhitelistEntry(serverIp, serverPort, clientIp);
 	}
 	
+	@Override
 	public IPv4Address getServerIP() {
 		return serverIp;
 	}
 	
+	@Override
 	public TransportPort getServerPort() {
 		return serverPort;
 	}
 	
+	@Override
 	public IPv4Address getClientIP() {
 		return clientIp;
 	}

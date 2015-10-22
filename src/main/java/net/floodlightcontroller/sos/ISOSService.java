@@ -61,7 +61,7 @@ public interface ISOSService extends IFloodlightService {
 	 * Query for SOS running statistics. This includes the running configuration
 	 * @return
 	 */
-	public SOSStatistics getStatistics();
+	public ISOSStatistics getStatistics();
 	
 	/**
 	 * Configure flow timeouts

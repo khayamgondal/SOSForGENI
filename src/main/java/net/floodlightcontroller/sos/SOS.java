@@ -88,12 +88,14 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	private static Set<SOSAgent> agents;
 
 	private static boolean enabled;
-
+	
 	/* These needs to be constant b/t agents, thus we'll keep them global for now */
 	private static int bufferSize;
 	private static int agentQueueCapacity;
 	private static int agentNumParallelSockets;
 	private static short flowTimeout;
+	
+	private static SOSStatistics statistics;
 
 	/* Keep tabs on our agents; make sure dev mgr will have them cached */
 	private class SOSAgentMonitor implements Runnable {
@@ -186,10 +188,12 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		restApiService.addRestletRoutable(new SOSWebRoutable());
 
 		/* Read our config options */
+		int connectionHistorySize = 100;
 		Map<String, String> configOptions = context.getConfigParams(this);
 		try {
 			controllerMac = MacAddress.of(configOptions.get("controller-mac"));
-
+			connectionHistorySize = Integer.parseInt(configOptions.get("connection-history-size"));
+			
 			/* These are defaults */
 			bufferSize = Integer.parseInt(configOptions.get("buffer-size"));
 			agentQueueCapacity = Integer.parseInt(configOptions.get("queue-capacity"));
@@ -201,6 +205,8 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			log.error("Incorrect SOS configuration options. Required: 'controller-mac', 'buffer-size', 'queue-capacity', 'parallel-tcp-sockets', 'flow-timeout', 'enabled'", ex);
 			throw ex;
 		}
+		
+		statistics = SOSStatistics.getInstance(connectionHistorySize);
 	}
 
 	@Override
@@ -632,6 +638,8 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 					/* Establish connection */
 					SOSConnection newSOSconnection = sosConnections.addConnection(clientRoute, interAgentRoute, serverRoute, 
 							agentNumParallelSockets, agentQueueCapacity, bufferSize, flowTimeout);
+					statistics.addActiveConnection(newSOSconnection);
+					
 					log.debug("Starting new SOS session: \r\n" + newSOSconnection.toString());
 
 					/* Send UDP messages to the home and foreign agents */
@@ -697,7 +705,9 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 						}
 
 						log.warn("Removing expired connection {}", uuid);
+						conn.setStopTime();
 						sosConnections.removeConnection(uuid);
+						statistics.removeActiveConnection(conn);
 						break;
 					}
 				} /* END FROM-AGENT LOOKUP */
@@ -984,6 +994,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		} else {
 			if (agents.add(agent)) { 
 				log.warn("Agent {} added.", agent);
+				statistics.addAgent(agent);
 			} else {
 				log.error("Error. Agent {} NOT added.", agent);
 			}
@@ -1016,6 +1027,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	public synchronized SOSReturnCode removeAgent(SOSAgent agent) {
 		if (agents.contains(agent)) { /* MACs are ignored in devices for equality check, so we should only compare IP and ports here */
 			agents.remove(agent);
+			statistics.removeAgent(agent);
 			log.warn("Agent {} removed.", agent);
 			return SOSReturnCode.AGENT_REMOVED;
 		} else {
@@ -1026,11 +1038,13 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 
 	@Override
 	public synchronized SOSReturnCode addWhitelistEntry(SOSWhitelistEntry entry) {
+		statistics.addWhitelistEntry(entry);
 		return sosConnections.addWhitelistEntry(entry);
 	}
 
 	@Override
 	public synchronized SOSReturnCode removeWhitelistEntry(SOSWhitelistEntry entry) {
+		statistics.removeWhitelistEntry(entry);
 		return sosConnections.removeWhitelistEntry(entry);
 	}
 
@@ -1049,10 +1063,8 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	}
 
 	@Override
-	public SOSStatistics getStatistics() {
-		log.error("Statistics not implemented");
-		// TODO Implement statistics
-		return null;
+	public ISOSStatistics getStatistics() {
+		return statistics;
 	}
 
 	@Override

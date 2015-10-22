@@ -1,12 +1,18 @@
 package net.floodlightcontroller.sos;
 
+import java.util.Date;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
 import org.projectfloodlight.openflow.types.TransportPort;
 
-public class SOSConnection {
+import net.floodlightcontroller.sos.web.SOSConnectionSerializer;
+
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+
+@JsonSerialize(using=SOSConnectionSerializer.class)
+public class SOSConnection implements ISOSConnection {
 	private SOSRoute clientToAgent;
 	private SOSRoute agentToAgent;
 	private SOSRoute serverToAgent;
@@ -17,6 +23,9 @@ public class SOSConnection {
 	private int bufferSize;
 	private int flowTimeout;
 	private Set<String> flowNames;
+	private Date initTime;
+	private Date startTime;
+	private Date stopTime;
 	
 	public SOSConnection(SOSRoute clientToAgent, SOSRoute interAgent,
 			SOSRoute serverToAgent, int numSockets, 
@@ -43,6 +52,38 @@ public class SOSConnection {
 		this.bufferSize = bufferSize;
 		this.flowTimeout = flowTimeout;
 		this.flowNames = new HashSet<String>();
+		this.initTime = new Date();
+	}
+	
+	/**
+	 * The time this connection was instantiated
+	 * at the client side of the network.
+	 */
+	@Override
+	public Date getInitTime() {
+		return this.initTime;
+	}
+	
+	/**
+	 * The time the agent handshake completed and
+	 * all flows were inserted necessary for file
+	 * transfer.
+	 */
+	@Override
+	public Date getStartTime() {
+		return this.startTime;
+	}
+	
+	/**
+	 * The time this connection was terminated.
+	 */
+	@Override
+	public Date getStopTime() {
+		return this.stopTime;
+	}
+	
+	public void setStopTime() {
+		this.stopTime = new Date();
 	}
 	
 	/**
@@ -51,6 +92,7 @@ public class SOSConnection {
 	 * nearest the client-side agent.
 	 * @return
 	 */
+	@Override
 	public SOSRoute getClientSideRoute() {
 		return this.clientToAgent;
 	}
@@ -61,6 +103,7 @@ public class SOSConnection {
 	 * OpenFlow switch nearest the server-side agent.
 	 * @return
 	 */
+	@Override
 	public SOSRoute getInterAgentRoute() {
 		return this.agentToAgent;
 	}
@@ -71,49 +114,62 @@ public class SOSConnection {
 	 * nearest the server-side agent.
 	 * @return
 	 */
+	@Override
 	public SOSRoute getServerSideRoute() {
 		return this.serverToAgent;
 	}
 	
+	@Override
 	public TransportPort getServerSideAgentTcpPort() {
 		return serverAgentPort;
 	}
 	
 	public void setServerSideAgentTcpPort(TransportPort port) {
-		serverAgentPort = port;
+		this.serverAgentPort = port;
+		this.startTime = new Date(); /* When the agents completed handshake */
 	}
 	
+	@Override
 	public SOSAgent getClientSideAgent() {
 		return (SOSAgent) this.clientToAgent.getDstDevice();
 	}
 	
+	@Override
 	public SOSAgent getServerSideAgent() {
 		return (SOSAgent) this.serverToAgent.getDstDevice();
 	}
 	
+	@Override
 	public SOSClient getClient() {
 		return (SOSClient) this.clientToAgent.getSrcDevice();
 	}
+	
+	@Override
 	public SOSServer getServer() {
 		return (SOSServer) this.serverToAgent.getSrcDevice();
 	}
 	
+	@Override
 	public UUID getTransferID() {
 		return transferId;
 	}
 	
+	@Override
 	public int getNumParallelSockets() {
 		return numParallelSockets;
 	}
 	
+	@Override
 	public int getQueueCapacity() {
 		return queueCapacity;
 	}
 	
+	@Override
 	public int getBufferSize() {
 		return bufferSize;
 	}
 	
+	@Override
 	public int getFlowTimeout() {
 		return flowTimeout;
 	}

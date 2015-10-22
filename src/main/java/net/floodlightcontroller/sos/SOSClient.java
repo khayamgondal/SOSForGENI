@@ -5,7 +5,12 @@ import org.projectfloodlight.openflow.types.IPv4Address;
 import org.projectfloodlight.openflow.types.MacAddress;
 import org.projectfloodlight.openflow.types.TransportPort;
 
-public class SOSClient extends SOSDevice {
+import net.floodlightcontroller.sos.web.SOSClientSerializer;
+
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+
+@JsonSerialize(using=SOSClientSerializer.class)
+public class SOSClient extends SOSDevice implements ISOSClient {
 	private TransportPort sock;
 	
 	public SOSClient(IPv4Address ip, TransportPort p) {
@@ -18,6 +23,7 @@ public class SOSClient extends SOSDevice {
 		this.sock = p;
 	}
 	
+	@Override
 	public TransportPort getTcpPort() {
 		return this.sock;
 	}

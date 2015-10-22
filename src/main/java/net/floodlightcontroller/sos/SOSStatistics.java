@@ -1,8 +1,15 @@
 package net.floodlightcontroller.sos;
 
-import java.util.Date;
+import java.util.ArrayDeque;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
+ import java.util.Queue;
 import java.util.Set;
+
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+
+import net.floodlightcontroller.sos.web.SOSStatisticsSerializer;
 
 /**
  * Singleton. Keep track of the statistics for SOS. This class
@@ -19,74 +26,75 @@ import java.util.Set;
  * @author Ryan Izard, rizard@g.clemson.edu
  *
  */
-public class SOSStatistics {
+@JsonSerialize(using=SOSStatisticsSerializer.class)
+public class SOSStatistics implements ISOSStatistics {
 	private static SOSStatistics instance;
-	private Date lastSession;
-	private Set<SOSAgent> agents;
-	private Set<SOSWhitelistEntry> registered;
-	private Set<SOSConnection> active;
+	private Set<ISOSAgent> agents;
+	private Set<ISOSWhitelistEntry> registered;
+	private Set<ISOSConnection> active;
+	private Queue<ISOSConnection> terminated;
+	private int terminatedCapacity;
 	
-	private SOSStatistics() {
-		lastSession = new Date(0);
-		agents = new HashSet<SOSAgent>();
-		registered = new HashSet<SOSWhitelistEntry>();
-		active = new HashSet<SOSConnection>();
+	private SOSStatistics(int oldCapacity) {
+		agents = new HashSet<ISOSAgent>();
+		registered = new HashSet<ISOSWhitelistEntry>();
+		active = new HashSet<ISOSConnection>();
+		terminatedCapacity = oldCapacity;
+		terminated = new ArrayDeque<ISOSConnection>(terminatedCapacity);
 	}
 	
-	public static SOSStatistics getInstance() {
+	public static SOSStatistics getInstance(int oldCapacity) {
 		if (instance == null) {
-			instance = new SOSStatistics();
+			instance = new SOSStatistics(oldCapacity);
 		}
 		return instance;
 	}
 	
-	private void updateLastSessionTime() {
-		lastSession.setTime(System.currentTimeMillis());
-	}
-	
-	public String getLastSessionTime() {
-		return lastSession.toString();
-	}
-	
-	public void addWhitelistEntry(SOSWhitelistEntry entry) {
+	public void addWhitelistEntry(ISOSWhitelistEntry entry) {
 		registered.add(entry);
 	}
 	
-	public void removeWhitelistEntry(SOSWhitelistEntry entry) {
+	public void removeWhitelistEntry(ISOSWhitelistEntry entry) {
 		registered.remove(entry);
 	}
 	
-	public Set<String> getWhitelistEntries() {
-		//Set<String> ret = new HashSet<String>(registered);
-		for (SOSWhitelistEntry e : registered) {
-			//ret.add("");
-		}
-		return null;
+	@Override
+	public Set<ISOSWhitelistEntry> getWhitelistEntries() {
+		return Collections.unmodifiableSet(registered);
 	}
 		
-	public void addActiveConnection(SOSConnection conn) {
-		if (!active.add(conn)) {
-			updateLastSessionTime();
-		}
+	public void addActiveConnection(ISOSConnection conn) {
+		active.add(conn);
 	}
 	
-	public void removeActiveConnection(SOSConnection conn) {
+	public void removeActiveConnection(ISOSConnection conn) {
 		active.remove(conn);
+		if (terminated.size() == terminatedCapacity) {
+			terminated.poll(); /* trash oldest */
+		}
+		terminated.add(conn);
 	}
 	
-	public Set<String> getActiveConnections() {
-		return null;
+	@Override
+	public Collection<ISOSConnection> getActiveConnections() {
+		return Collections.unmodifiableCollection(active);
 	}
 	
-	public void addAgent(SOSAgent agent) {
+	public void addAgent(ISOSAgent agent) {
 		agents.add(agent);
 	}
 	
-	public void removeAgent(SOSAgent agent) {
+	public void removeAgent(ISOSAgent agent) {
 		agents.remove(agent);
 	}
 	
-	public Set<String> getAgents() {
-		return null;
+	@Override
+	public Collection<ISOSAgent> getAgents() {
+		return Collections.unmodifiableCollection(agents);
+	}
+
+	@Override
+	public Collection<ISOSConnection> getTerminatedConnections() {
+		return Collections.unmodifiableCollection(terminated);
 	}
 }

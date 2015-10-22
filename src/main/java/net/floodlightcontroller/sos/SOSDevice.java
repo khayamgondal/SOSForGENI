@@ -3,7 +3,7 @@ package net.floodlightcontroller.sos;
 import org.projectfloodlight.openflow.types.IPv4Address;
 import org.projectfloodlight.openflow.types.MacAddress;
 
-public abstract class SOSDevice {
+public abstract class SOSDevice implements ISOSDevice {
 	private IPv4Address ip_addr;
 	private MacAddress mac_addr;
 	private SOSDeviceType type;
@@ -27,6 +27,8 @@ public abstract class SOSDevice {
 	public void setIPAddr(IPv4Address ip) {
 		ip_addr = ip;
 	}
+	
+	@Override
 	public IPv4Address getIPAddr() {
 		return ip_addr;
 	}
@@ -34,6 +36,8 @@ public abstract class SOSDevice {
 	public void setMACAddr(MacAddress mac) {
 		mac_addr = mac;
 	}
+	
+	@Override
 	public MacAddress getMACAddr() {
 		return mac_addr;
 	}

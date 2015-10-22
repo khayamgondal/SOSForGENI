@@ -2,10 +2,14 @@ package net.floodlightcontroller.sos;
 
 import javax.annotation.Nonnull;
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+
 import net.floodlightcontroller.routing.Route;
 import net.floodlightcontroller.topology.NodePortTuple;
+import net.floodlightcontroller.sos.web.SOSRouteSerializer;
 
-public class SOSRoute {
+@JsonSerialize(using=SOSRouteSerializer.class)
+public class SOSRoute implements ISOSRoute {
 	private SOSDevice d1;
 	private SOSDevice d2;
 	private Route route;
@@ -49,10 +53,12 @@ public class SOSRoute {
 		this.route = route;
 	}
 	
+	@Override
 	public SOSDevice getSrcDevice() {
 		return d1;
 	}
 	
+	@Override
 	public SOSDevice getDstDevice() {
 		return d2;
 	}
@@ -65,10 +71,12 @@ public class SOSRoute {
 		return d2_sp;
 	}
 		
+	@Override
 	public Route getRoute() {
 		return route;
 	}
 	
+	@Override
 	public SOSRouteType getRouteType() {
 		return t;
 	}

@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
+import net.floodlightcontroller.sos.ISOSAgent;
 import net.floodlightcontroller.sos.ISOSService;
 import net.floodlightcontroller.sos.SOSAgent;
 import net.floodlightcontroller.sos.ISOSService.SOSReturnCode;
@@ -25,12 +26,26 @@ public class AgentResource extends ServerResource {
 	protected static Logger log = LoggerFactory.getLogger(AgentResource.class);
 	protected static final String STR_OPERATION_ADD = "add";	
 	protected static final String STR_OPERATION_REMOVE = "remove";
+	protected static final String STR_OPERATION_GET = "get";
 
 	protected static final String STR_IP = "ip-address";
 	protected static final String STR_DATA_PORT = "data-port";
 	protected static final String STR_CONTROL_PORT = "control-port";
 	protected static final String STR_FEEDBACK_PORT = "feedback-port";
 
+	public Object getAgents() {
+		ISOSService sosService = (ISOSService) getContext().getAttributes().get(ISOSService.class.getCanonicalName());
+		String operation = ((String) getRequestAttributes().get(SOSWebRoutable.STR_OPERATION)).toLowerCase().trim();
+
+		if (operation.equals(STR_OPERATION_GET)) {
+			//TODO
+		} else {
+			Map<String, String> ret = new HashMap<String, String>();
+			
+		}
+		return null;
+	}
+	
 	@Put
 	@Post
 	public Map<String, String> handleAgent(String json) {
