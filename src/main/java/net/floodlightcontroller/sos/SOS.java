@@ -758,14 +758,16 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 							log.debug("Found initial agent {} w/route {}", agent, r);
 							shortestPath = r;
 							closestAgent = agent;
-							closestAgent.setMACAddr(d.getMACAddress()); /* set the MAC while we're here; TODO listen for device updates from IDeviceListener instead */
-						} else if (r != null && shortestPath.getPath().size() > r.getPath().size()) { /* This implies we keep the first agent if there's a tie */
+							closestAgent.setMACAddr(d.getMACAddress()); /* set the MAC while we're here */
+						} else if (r != null 
+								&& shortestPath.getPath().size() >= r.getPath().size() /* Allow distance ties to progress to... */
+								&& closestAgent.getNumTransfersServing() > agent.getNumTransfersServing()) { /* ...agent load factor as tie-breaker */
 							if (log.isDebugEnabled()) { /* Use isDebugEnabled() when we have to create a new object for the log */
 								log.debug("Found new agent {} w/shorter route. Old route {}; new route {}", new Object[] { agent, shortestPath, r});
 							}
 							shortestPath = r;
 							closestAgent = agent;
-							closestAgent.setMACAddr(d.getMACAddress()); /* set the MAC while we're here; TODO listen for device updates from IDeviceListener instead */
+							closestAgent.setMACAddr(d.getMACAddress()); /* set the MAC while we're here */
 						} else {
 							if (log.isDebugEnabled()) { 
 								log.debug("Retaining current agent {} w/shortest route. Kept route {}; Longer contender {}, {}", new Object[] { closestAgent, shortestPath, agent, r }); 
