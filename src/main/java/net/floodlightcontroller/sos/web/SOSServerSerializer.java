@@ -18,9 +18,9 @@ public class SOSServerSerializer extends JsonSerializer<ISOSServer> {
 		jGen.configure(Feature.WRITE_NUMBERS_AS_STRINGS, true);
 
 		if (server == null) {
-			jGen.writeStartObject();
+			jGen.writeStartArray();
 			jGen.writeString("No SOS server to report");
-			jGen.writeEndObject();
+			jGen.writeEndArray();
 			return;
 		}
 

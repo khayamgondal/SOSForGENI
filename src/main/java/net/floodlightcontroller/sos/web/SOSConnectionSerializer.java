@@ -18,9 +18,9 @@ public class SOSConnectionSerializer extends JsonSerializer<ISOSConnection> {
 		jGen.configure(Feature.WRITE_NUMBERS_AS_STRINGS, true);
 
 		if (conn == null) {
-			jGen.writeStartObject();
+			jGen.writeStartArray();
 			jGen.writeString("No SOS connection to report");
-			jGen.writeEndObject();
+			jGen.writeEndArray();
 			return;
 		}
 

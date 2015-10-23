@@ -19,9 +19,9 @@ public class SOSRouteSerializer extends JsonSerializer<ISOSRoute> {
 		jGen.configure(Feature.WRITE_NUMBERS_AS_STRINGS, true);
 
 		if (rt == null) {
-			jGen.writeStartObject();
+			jGen.writeStartArray();
 			jGen.writeString("No SOS route to report");
-			jGen.writeEndObject();
+			jGen.writeEndArray();
 			return;
 		}
 

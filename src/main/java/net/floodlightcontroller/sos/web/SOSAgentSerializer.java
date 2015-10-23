@@ -19,9 +19,9 @@ public class SOSAgentSerializer extends JsonSerializer<ISOSAgent> {
 		jGen.configure(Feature.WRITE_NUMBERS_AS_STRINGS, true);
 
 		if (agent == null) {
-			jGen.writeStartObject();
+			jGen.writeStartArray();
 			jGen.writeString("No SOS agent to report");
-			jGen.writeEndObject();
+			jGen.writeEndArray();
 			return;
 		}
 

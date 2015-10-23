@@ -18,9 +18,9 @@ public class SOSWhitelistEntrySerializer extends JsonSerializer<SOSWhitelistEntr
 		jGen.configure(Feature.WRITE_NUMBERS_AS_STRINGS, true);
 
 		if (entry == null) {
-			jGen.writeStartObject();
+			jGen.writeStartArray();
 			jGen.writeString("No SOS whitelist entry to report");
-			jGen.writeEndObject();
+			jGen.writeEndArray();
 			return;
 		}
 

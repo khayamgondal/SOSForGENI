@@ -18,9 +18,9 @@ public class SOSClientSerializer extends JsonSerializer<ISOSClient> {
 		jGen.configure(Feature.WRITE_NUMBERS_AS_STRINGS, true);
 
 		if (client == null) {
-			jGen.writeStartObject();
+			jGen.writeStartArray();
 			jGen.writeString("No SOS client to report");
-			jGen.writeEndObject();
+			jGen.writeEndArray();
 			return;
 		}
 

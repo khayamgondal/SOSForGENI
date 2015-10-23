@@ -20,9 +20,9 @@ public class SOSStatisticsSerializer extends JsonSerializer<ISOSStatistics> {
 		jGen.configure(Feature.WRITE_NUMBERS_AS_STRINGS, true);
 
 		if (stats == null) {
-			jGen.writeStartObject();
+			jGen.writeStartArray();
 			jGen.writeString("No SOS statistics to report");
-			jGen.writeEndObject();
+			jGen.writeEndArray();
 			return;
 		}
 
@@ -34,7 +34,7 @@ public class SOSStatisticsSerializer extends JsonSerializer<ISOSStatistics> {
 		}
 		jGen.writeEndArray();
 		
-		jGen.writeArrayFieldStart("active-connections");
+		jGen.writeArrayFieldStart("active-transfers");
 		for (ISOSConnection c : stats.getActiveConnections()) {
 			jGen.writeObject(c);
 		}
