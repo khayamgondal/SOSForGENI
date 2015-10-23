@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
-import net.floodlightcontroller.sos.ISOSAgent;
 import net.floodlightcontroller.sos.ISOSService;
 import net.floodlightcontroller.sos.SOSAgent;
 import net.floodlightcontroller.sos.ISOSService.SOSReturnCode;

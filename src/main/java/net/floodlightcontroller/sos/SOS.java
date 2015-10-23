@@ -88,13 +88,13 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	private static Set<SOSAgent> agents;
 
 	private static boolean enabled;
-	
+
 	/* These needs to be constant b/t agents, thus we'll keep them global for now */
 	private static int bufferSize;
 	private static int agentQueueCapacity;
 	private static int agentNumParallelSockets;
 	private static short flowTimeout;
-	
+
 	private static SOSStatistics statistics;
 
 	/* Keep tabs on our agents; make sure dev mgr will have them cached */
@@ -192,20 +192,24 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		Map<String, String> configOptions = context.getConfigParams(this);
 		try {
 			controllerMac = MacAddress.of(configOptions.get("controller-mac"));
-			connectionHistorySize = Integer.parseInt(configOptions.get("connection-history-size"));
-			
+			connectionHistorySize = Integer.parseInt(configOptions.get("connection-history-size") == null ? "100" : configOptions.get("connection-history-size"));
+
 			/* These are defaults */
-			bufferSize = Integer.parseInt(configOptions.get("buffer-size"));
-			agentQueueCapacity = Integer.parseInt(configOptions.get("queue-capacity"));
-			agentNumParallelSockets = Integer.parseInt(configOptions.get("parallel-tcp-sockets"));
-			flowTimeout = Short.parseShort(configOptions.get("flow-timeout"));
-			enabled = Boolean.parseBoolean(configOptions.get("enabled") != null ? configOptions.get("enabled") : "true"); /* enabled by default if not present --> listing module is enabling */
+			bufferSize = Integer.parseInt(configOptions.get("buffer-size") == null ? "30000" : configOptions.get("buffer-size"));
+			agentQueueCapacity = Integer.parseInt(configOptions.get("queue-capacity") == null ? "3" : configOptions.get("queue-capacity"));
+			agentNumParallelSockets = Integer.parseInt(configOptions.get("parallel-tcp-sockets") == null ? "1000" : configOptions.get("parallel-tcp-sockets"));
+			flowTimeout = Short.parseShort(configOptions.get("flow-timeout") == null ? "60" : configOptions.get("flow-timeout"));
+			enabled = Boolean.parseBoolean(configOptions.get("enabled") == null ? "true" : configOptions.get("enabled")); /* enabled by default if not present --> listing module is enabling */
 
 		} catch (IllegalArgumentException | NullPointerException ex) {
 			log.error("Incorrect SOS configuration options. Required: 'controller-mac', 'buffer-size', 'queue-capacity', 'parallel-tcp-sockets', 'flow-timeout', 'enabled'", ex);
 			throw ex;
 		}
-		
+
+		if (log.isInfoEnabled()) {
+			log.info("Initial config options: connection-history-size:{}, buffer-size:{}, queue-capacity:{}, parallel-tcp-sockets:{}, flow-timeout:{}, enabled:{}", 
+					new Object[] { connectionHistorySize, bufferSize, agentQueueCapacity, agentNumParallelSockets, flowTimeout, enabled });
+		}
 		statistics = SOSStatistics.getInstance(connectionHistorySize);
 	}
 
@@ -639,14 +643,14 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 					SOSConnection newSOSconnection = sosConnections.addConnection(clientRoute, interAgentRoute, serverRoute, 
 							agentNumParallelSockets, agentQueueCapacity, bufferSize, flowTimeout);
 					statistics.addActiveConnection(newSOSconnection);
-					
+
 					log.debug("Starting new SOS session: \r\n" + newSOSconnection.toString());
 
 					/* Send UDP messages to the home and foreign agents */
 					log.debug("Sending UDP information packets to client-side and server-side agents");
 					sendInfoToAgent(cntx, newSOSconnection, true); /* home */
 					sendInfoToAgent(cntx, newSOSconnection, false); /* foreign */
-					
+
 					/* Push flows and add flow names to connection (for removal upon termination) */
 					log.debug("Pushing client-side SOS flows");
 					pushRoute(newSOSconnection.getClientSideRoute(), newSOSconnection);
@@ -832,7 +836,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 					log.error("Error looking up ports with links from topology service for switch {}", ap.getSwitchDPID());
 					continue;
 				}
-				
+
 				if (!portsOnLinks.contains(ap.getPort())) {
 					log.debug("Found 'true' attachment point of {}", ap);
 					return ap;

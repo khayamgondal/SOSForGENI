@@ -29,28 +29,24 @@ public class SOSStatisticsSerializer extends JsonSerializer<ISOSStatistics> {
 		jGen.writeStartObject();
 		
 		jGen.writeArrayFieldStart("agents");
-		jGen.writeStartArray();
 		for (ISOSAgent a : stats.getAgents()) {
 			jGen.writeObject(a);
 		}
 		jGen.writeEndArray();
 		
 		jGen.writeArrayFieldStart("active-connections");
-		jGen.writeStartArray();
 		for (ISOSConnection c : stats.getActiveConnections()) {
 			jGen.writeObject(c);
 		}
 		jGen.writeEndArray();
 		
 		jGen.writeArrayFieldStart("terminated-connections");
-		jGen.writeStartArray();
 		for (ISOSConnection t : stats.getTerminatedConnections()) {
 			jGen.writeObject(t);
 		}
 		jGen.writeEndArray();
 		
 		jGen.writeArrayFieldStart("whitelist-entries");
-		jGen.writeStartArray();
 		for (ISOSWhitelistEntry e : stats.getWhitelistEntries()) {
 			jGen.writeObject(e);
 		}

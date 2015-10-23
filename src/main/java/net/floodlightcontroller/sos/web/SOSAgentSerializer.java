@@ -32,7 +32,6 @@ public class SOSAgentSerializer extends JsonSerializer<ISOSAgent> {
 		jGen.writeStringField("data-port", agent.getDataPort().toString());
 		jGen.writeStringField("feedback-port", agent.getFeedbackPort().toString());
 		jGen.writeArrayFieldStart("active-transfers");
-		jGen.writeStartArray();
 		for (UUID u : agent.getActiveTransfers()) {
 			jGen.writeString(u.toString());
 		}
