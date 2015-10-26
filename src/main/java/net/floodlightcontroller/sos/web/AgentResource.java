@@ -10,6 +10,7 @@ import net.floodlightcontroller.sos.ISOSService.SOSReturnCode;
 
 import org.projectfloodlight.openflow.types.IPv4Address;
 import org.projectfloodlight.openflow.types.TransportPort;
+import org.restlet.resource.Get;
 import org.restlet.resource.Post;
 import org.restlet.resource.Put;
 import org.restlet.resource.ServerResource;
@@ -25,24 +26,17 @@ public class AgentResource extends ServerResource {
 	protected static Logger log = LoggerFactory.getLogger(AgentResource.class);
 	protected static final String STR_OPERATION_ADD = "add";	
 	protected static final String STR_OPERATION_REMOVE = "remove";
-	protected static final String STR_OPERATION_GET = "get";
 
 	protected static final String STR_IP = "ip-address";
 	protected static final String STR_DATA_PORT = "data-port";
 	protected static final String STR_CONTROL_PORT = "control-port";
 	protected static final String STR_FEEDBACK_PORT = "feedback-port";
 
+	@Get
 	public Object getAgents() {
 		ISOSService sosService = (ISOSService) getContext().getAttributes().get(ISOSService.class.getCanonicalName());
-		String operation = ((String) getRequestAttributes().get(SOSWebRoutable.STR_OPERATION)).toLowerCase().trim();
 
-		if (operation.equals(STR_OPERATION_GET)) {
-			//TODO
-		} else {
-			Map<String, String> ret = new HashMap<String, String>();
-			
-		}
-		return null;
+		return sosService.getAgents();
 	}
 	
 	@Put

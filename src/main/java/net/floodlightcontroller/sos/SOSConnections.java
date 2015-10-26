@@ -1,6 +1,7 @@
 package net.floodlightcontroller.sos;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -189,5 +190,9 @@ public class SOSConnections  {
 			log.error("Could not locate whitelist entry {} to remove. Not removing entry.", entry);
 			return SOSReturnCode.ERR_UNKNOWN_WHITELIST_ENTRY;
 		}
+	}
+	
+	public Set<ISOSWhitelistEntry> getWhitelistEntries() {
+		return Collections.unmodifiableSet(whitelist);
 	}
 }

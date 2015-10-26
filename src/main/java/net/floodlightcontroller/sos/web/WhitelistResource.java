@@ -12,6 +12,7 @@ import net.floodlightcontroller.sos.SOSWhitelistEntry;
 
 import org.projectfloodlight.openflow.types.IPv4Address;
 import org.projectfloodlight.openflow.types.TransportPort;
+import org.restlet.resource.Get;
 import org.restlet.resource.Post;
 import org.restlet.resource.Put;
 import org.restlet.resource.ServerResource;
@@ -34,7 +35,13 @@ public class WhitelistResource extends ServerResource {
 	protected static final String STR_START_TIME = "start-time";
 	protected static final String STR_STOP_TIME = "stop-time";
 
+	@Get
+	public Object getWhitelistEntries() {
+		ISOSService sosService = (ISOSService) getContext().getAttributes().get(ISOSService.class.getCanonicalName());
 
+		return sosService.getWhitelistEntries();
+	}
+	
 	@Put
 	@Post
 	public Map<String, String> handleWhitelist(String json) {

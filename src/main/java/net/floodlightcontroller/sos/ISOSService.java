@@ -1,5 +1,7 @@
 package net.floodlightcontroller.sos;
 
+import java.util.Set;
+
 import net.floodlightcontroller.core.module.IFloodlightService;
 
 public interface ISOSService extends IFloodlightService {
@@ -31,6 +33,12 @@ public interface ISOSService extends IFloodlightService {
 	public SOSReturnCode removeAgent(ISOSAgent agent);
 	
 	/**
+	 * Get the current agents configured for use by SOS.
+	 * @return
+	 */
+	public Set<? extends ISOSAgent> getAgents();
+	
+	/**
 	 * Proactively add someone to the SOS whitelist . Any future 
 	 * packets matching this entry will be handled by SOS.
 	 * @param entry
@@ -47,6 +55,12 @@ public interface ISOSService extends IFloodlightService {
 	public SOSReturnCode removeWhitelistEntry(ISOSWhitelistEntry entry);
 	
 	/**
+	 * Retrieve the currently-configured whitelist entries.
+	 * @return
+	 */
+	public Set<? extends ISOSWhitelistEntry> getWhitelistEntries();
+	
+	/**
 	 * Enable SOS
 	 * @return
 	 */
@@ -57,6 +71,12 @@ public interface ISOSService extends IFloodlightService {
 	 * @return
 	 */
 	public SOSReturnCode disable();
+	
+	/**
+	 * Check if the SOS module is enabled.
+	 * @return
+	 */
+	public boolean isEnabled();
 	
 	/**
 	 * Query for SOS running statistics. This includes the running configuration
@@ -73,12 +93,30 @@ public interface ISOSService extends IFloodlightService {
 	public SOSReturnCode setFlowTimeouts(int hardSeconds, int idleSeconds);
 	
 	/**
+	 * Retrieve the configured flow idle timeout
+	 * @return
+	 */
+	public int getFlowIdleTimeout();
+	
+	/**
+	 * Retrieve the configured flow hard timeout
+	 * @return
+	 */
+	public int getFlowHardTimeout();
+	
+	/**
 	 * Configure number of parallel connections to use between agents
 	 * for a single SOS session
 	 * @param num
 	 * @return
 	 */
 	public SOSReturnCode setNumParallelConnections(int num);
+	
+	/**
+	 * Retrieve the number of parallel connections
+	 * @return
+	 */
+	public int getNumParallelConnections();
 	
 	/**
 	 * Configure the size of the agent's RX buffer to store data
@@ -89,11 +127,23 @@ public interface ISOSService extends IFloodlightService {
 	public SOSReturnCode setBufferSize(int bytes);
 	
 	/**
+	 * Retrieve the size of the agent's RX buffer
+	 * @return
+	 */
+	public int getBufferSize();
+	
+	/**
 	 * Configure the size of the queue for each parallel socket
 	 * @param packets
 	 * @return
 	 */
 	public SOSReturnCode setQueueCapacity(int packets);
+	
+	/**
+	 * Retrieve the size of the queue for each parallel socket
+	 * @return
+	 */
+	public int getQueueCapacity();
 	
 	/**
 	 * Check if SOS is able to handle an additional data transfer

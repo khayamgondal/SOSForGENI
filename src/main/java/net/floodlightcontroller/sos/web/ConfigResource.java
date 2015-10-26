@@ -7,6 +7,7 @@ import java.util.Map;
 import net.floodlightcontroller.sos.ISOSService;
 import net.floodlightcontroller.sos.ISOSService.SOSReturnCode;
 
+import org.restlet.resource.Get;
 import org.restlet.resource.Post;
 import org.restlet.resource.Put;
 import org.restlet.resource.ServerResource;
@@ -25,9 +26,22 @@ public class ConfigResource extends ServerResource {
 	protected static final String STR_SETTING_QUEUE_CAPACITY = "queue-capacity";		
 	protected static final String STR_SETTING_HARD_TIMEOUT = "hard-timeout";
 	protected static final String STR_SETTING_IDLE_TIMEOUT = "idle-timeout";
-	
+
 	protected static final String STR_INVALID_KEY = "invalid-key";
 	protected static final String STR_INVALID_VALUE = "invalid-value";
+
+	@Get
+	public Map<String, String> getConfiguration() {
+		ISOSService sosService = (ISOSService) getContext().getAttributes().get(ISOSService.class.getCanonicalName());
+
+		Map<String, String> ret = new HashMap<String, String>();		
+		ret.put(STR_SETTING_PARALLEL, Integer.toString(sosService.getNumParallelConnections(), 10));
+		ret.put(STR_SETTING_BUFFER_SIZE, Integer.toString(sosService.getBufferSize(), 10));
+		ret.put(STR_SETTING_QUEUE_CAPACITY, Integer.toString(sosService.getQueueCapacity(), 10));
+		ret.put(STR_SETTING_HARD_TIMEOUT, Integer.toString(sosService.getFlowHardTimeout(), 10));
+		ret.put(STR_SETTING_IDLE_TIMEOUT, Integer.toString(sosService.getFlowIdleTimeout(), 10));
+		return ret;
+	}
 
 	@Put
 	@Post
@@ -112,7 +126,7 @@ public class ConfigResource extends ServerResource {
 				break;
 			}		
 		}
-		
+
 		return ret;
 	}
 
@@ -138,7 +152,7 @@ public class ConfigResource extends ServerResource {
 		}
 
 		Map<String, Object> ret = new HashMap<String, Object>();
-		
+
 		try {
 			try {
 				jp = f.createParser(json);

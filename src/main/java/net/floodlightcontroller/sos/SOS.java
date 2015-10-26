@@ -122,7 +122,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 					}
 
 					if (sp != null) { /* We know specifically where the agent is located */
-						log.warn("ARPing for agent {} with known true attachment point {}", a, sp);
+						log.debug("ARPing for agent {} with known true attachment point {}", a, sp);
 						arpForDevice(
 								a.getIPAddr(), 
 								(a.getIPAddr().and(IPv4Address.of("255.255.255.0"))).or(IPv4Address.of("0.0.0.254")) /* Doesn't matter really; must be same subnet though */, 
@@ -677,7 +677,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 						sendServerSparkPacket(cntx, l2, conn);
 					}
 				} else if (packetStatus == SOSPacketStatus.INACTIVE_UNREGISTERED) {
-					log.warn("Received an unregistered TCP packet. Register the connection to have it operated on by SOS.");
+					log.debug("Received an unregistered TCP packet. Register the connection to have it operated on by SOS.");
 					return Command.CONTINUE; /* Short circuit default return for unregistered -- let Forwarding/Hub handle it */
 				} else {
 					log.error("Received a TCP packet w/status {} that belongs to an ongoing SOS session. Check accuracy of flows/Report SOS bug", packetStatus);
@@ -699,7 +699,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 						SOSConnection conn = sosConnections.getConnection(uuid);
 						if (conn == null) {
 							log.error("Could not locate UUID {} in connection storage. Report SOS bug", uuid);
-							return Command.STOP; /* this WAS for us, but there was an error; no need to forward */
+							return Command.STOP; /* This WAS for us, but there was an error; no need to forward */
 						}
 
 						/* We found it; remove flows; delete from storage */
@@ -708,11 +708,11 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 							sfp.deleteFlow(flowName);
 						}
 
-						log.warn("Removing expired connection {}", uuid);
+						log.warn("Removing terminated connection {}", uuid);
 						conn.setStopTime();
 						sosConnections.removeConnection(uuid);
 						statistics.removeActiveConnection(conn);
-						break;
+						return Command.STOP; /* This packet was for our module from an agent */
 					}
 				} /* END FROM-AGENT LOOKUP */
 			} /* END IF UDP packet */
@@ -740,7 +740,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 
 		/* First, make sure client has a valid attachment point */
 		if (devAps.length == 0) {
-			log.warn("Client/Server {} was found in the device manager but does not have a valid attachment point. Report SOS bug.");
+			log.error("Client/Server {} was found in the device manager but does not have a valid attachment point. Report SOS bug.");
 			return null;
 		}
 		/* Then, narrow down the APs to the real location where the device is connected */
@@ -1039,6 +1039,11 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			return SOSReturnCode.ERR_UNKNOWN_AGENT;
 		}
 	}
+	
+	@Override
+	public Set<? extends ISOSAgent> getAgents() {
+		return Collections.unmodifiableSet((Set<? extends ISOSAgent>) agents);
+	}
 
 	@Override
 	public synchronized SOSReturnCode addWhitelistEntry(ISOSWhitelistEntry entry) {
@@ -1050,6 +1055,11 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	public synchronized SOSReturnCode removeWhitelistEntry(ISOSWhitelistEntry entry) {
 		statistics.removeWhitelistEntry(entry);
 		return sosConnections.removeWhitelistEntry(entry);
+	}
+	
+	@Override
+	public Set<? extends ISOSWhitelistEntry> getWhitelistEntries() {
+		return sosConnections.getWhitelistEntries(); /* already unmodifiable */
 	}
 
 	@Override
@@ -1065,6 +1075,11 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		enabled = false;
 		return SOSReturnCode.DISABLED;
 	}
+	
+	@Override
+	public boolean isEnabled() {
+		return enabled;
+	}
 
 	@Override
 	public ISOSStatistics getStatistics() {
@@ -1079,6 +1094,16 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		}
 		return SOSReturnCode.CONFIG_SET;
 	}
+	
+	@Override
+	public int getFlowIdleTimeout() {
+		return flowTimeout;
+	}
+	
+	@Override
+	public int getFlowHardTimeout() {
+		return 0;
+	}
 
 	@Override
 	public synchronized SOSReturnCode setNumParallelConnections(int num) {
@@ -1086,17 +1111,32 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		log.warn("Set number of parallel connections to {}", num);
 		return SOSReturnCode.CONFIG_SET;
 	}
+	
+	@Override
+	public int getNumParallelConnections() {
+		return agentNumParallelSockets;
+	}
 
 	@Override
 	public synchronized SOSReturnCode setBufferSize(int bytes) {
 		bufferSize = bytes;
 		return SOSReturnCode.CONFIG_SET;
 	}
+	
+	@Override
+	public int getBufferSize() {
+		return bufferSize;
+	}
 
 	@Override
 	public synchronized SOSReturnCode setQueueCapacity(int packets) {
 		agentQueueCapacity = packets;
 		return SOSReturnCode.CONFIG_SET;
+	}
+	
+	@Override
+	public int getQueueCapacity() {
+		return agentQueueCapacity;
 	}
 
 	@Override
