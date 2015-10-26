@@ -10,4 +10,5 @@ public class Code {
 	public static final String ERR_BAD_ERR_CODE = "3";
 	public static final String ERR_NOT_FOUND = "4";
 	public static final String ERR_UNDEF_OPERATION = "5";
+	public static final String ERR_NOT_READY = "6";
 }

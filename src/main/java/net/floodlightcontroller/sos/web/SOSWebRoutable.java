@@ -12,7 +12,7 @@ public class SOSWebRoutable implements RestletRoutable {
     /**
      * Create the Restlet router and bind to the proper resources.
      * These are the operations that can be performed via the
-     * REST API. The *Resource classes are responsible for handling
+     * REST API. The Resource classes are responsible for handling
      * the appropriate HTTP commands and parsing any data in the
      * request itself of in the payload (if put or post).
      */
@@ -24,6 +24,7 @@ public class SOSWebRoutable implements RestletRoutable {
         router.attach("/module/{" + STR_OPERATION + "}/json", ModuleResource.class);
         router.attach("/config/json", ConfigResource.class);
         router.attach("/stats/json", StatisticsResource.class);
+        router.attach("/status/json", StatusResource.class);
         return router;
     }
 

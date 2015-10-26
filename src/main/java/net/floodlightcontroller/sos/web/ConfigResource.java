@@ -25,6 +25,9 @@ public class ConfigResource extends ServerResource {
 	protected static final String STR_SETTING_QUEUE_CAPACITY = "queue-capacity";		
 	protected static final String STR_SETTING_HARD_TIMEOUT = "hard-timeout";
 	protected static final String STR_SETTING_IDLE_TIMEOUT = "idle-timeout";
+	
+	protected static final String STR_INVALID_KEY = "invalid-key";
+	protected static final String STR_INVALID_VALUE = "invalid-value";
 
 	@Put
 	@Post
@@ -33,17 +36,17 @@ public class ConfigResource extends ServerResource {
 
 		Map<String, String> ret = new HashMap<String, String>();
 
-		Map<String, Integer> config = parseConfigFromJson(json);
+		Map<String, Object> config = parseConfigFromJson(json);
 
 		for (String key : config.keySet()) {
 			SOSReturnCode rc;
 			switch (key) {
 			case STR_SETTING_BUFFER_SIZE:
-				rc = sosService.setBufferSize(config.get(key).intValue());
+				rc = sosService.setBufferSize(((Integer) config.get(key)).intValue());
 				switch (rc) {
 				case CONFIG_SET:
 					ret.put(Code.CODE, Code.OKAY);
-					ret.put(Code.MESSAGE, "Buffer size set to " + config.get(key).intValue());
+					ret.put(Code.MESSAGE, "Buffer size set to " + ((Integer) config.get(key)).intValue());
 					break;
 				default:
 					ret.put(Code.CODE, Code.ERR_BAD_ERR_CODE);
@@ -52,11 +55,11 @@ public class ConfigResource extends ServerResource {
 				}
 				break;
 			case STR_SETTING_PARALLEL:
-				rc = sosService.setNumParallelConnections(config.get(key).intValue());
+				rc = sosService.setNumParallelConnections(((Integer) config.get(key)).intValue());
 				switch (rc) {
 				case CONFIG_SET:
 					ret.put(Code.CODE, Code.OKAY);
-					ret.put(Code.MESSAGE, "Parallel connections set to " + config.get(key).intValue());
+					ret.put(Code.MESSAGE, "Parallel connections set to " + ((Integer) config.get(key)).intValue());
 					break;
 				default:
 					ret.put(Code.CODE, Code.ERR_BAD_ERR_CODE);
@@ -65,11 +68,11 @@ public class ConfigResource extends ServerResource {
 				}
 				break;
 			case STR_SETTING_QUEUE_CAPACITY:
-				rc = sosService.setQueueCapacity(config.get(key).intValue());
+				rc = sosService.setQueueCapacity(((Integer) config.get(key)).intValue());
 				switch (rc) {
 				case CONFIG_SET:
 					ret.put(Code.CODE, Code.OKAY);
-					ret.put(Code.MESSAGE, "Queue capacity set to " + config.get(key).intValue());
+					ret.put(Code.MESSAGE, "Queue capacity set to " + ((Integer) config.get(key)).intValue());
 					break;
 				default:
 					ret.put(Code.CODE, Code.ERR_BAD_ERR_CODE);
@@ -78,11 +81,11 @@ public class ConfigResource extends ServerResource {
 				}
 				break;
 			case STR_SETTING_HARD_TIMEOUT:
-				rc = sosService.setFlowTimeouts(config.get(key).intValue(), -1);
+				rc = sosService.setFlowTimeouts(((Integer) config.get(key)).intValue(), -1);
 				switch (rc) {
 				case CONFIG_SET:
 					ret.put(Code.CODE, Code.OKAY);
-					ret.put(Code.MESSAGE, "(Ignored) Hard timeout set to " + config.get(key).intValue());
+					ret.put(Code.MESSAGE, "(Ignored) Hard timeout set to " + ((Integer) config.get(key)).intValue());
 					break;
 				default:
 					ret.put(Code.CODE, Code.ERR_BAD_ERR_CODE);
@@ -91,11 +94,11 @@ public class ConfigResource extends ServerResource {
 				}
 				break;
 			case STR_SETTING_IDLE_TIMEOUT:
-				rc = sosService.setFlowTimeouts(-1, config.get(key).intValue());
+				rc = sosService.setFlowTimeouts(-1, ((Integer) config.get(key)).intValue());
 				switch (rc) {
 				case CONFIG_SET:
 					ret.put(Code.CODE, Code.OKAY);
-					ret.put(Code.MESSAGE, "Idle timeout set to " + config.get(key).intValue());
+					ret.put(Code.MESSAGE, "Idle timeout set to " + ((Integer) config.get(key)).intValue());
 					break;
 				default:
 					ret.put(Code.CODE, Code.ERR_BAD_ERR_CODE);
@@ -103,9 +106,13 @@ public class ConfigResource extends ServerResource {
 					break;
 				}
 				break;
+			case STR_INVALID_KEY:
+			case STR_INVALID_VALUE:
+				ret.put(key, (String) config.get(key));
+				break;
 			}		
 		}
-
+		
 		return ret;
 	}
 
@@ -122,7 +129,7 @@ public class ConfigResource extends ServerResource {
 	 * @param json
 	 * @return
 	 */
-	private static Map<String, Integer> parseConfigFromJson(String json) {
+	private static Map<String, Object> parseConfigFromJson(String json) {
 		MappingJsonFactory f = new MappingJsonFactory();
 		JsonParser jp;
 
@@ -130,8 +137,8 @@ public class ConfigResource extends ServerResource {
 			return null;
 		}
 
-		Map<String, Integer> ret = new HashMap<String, Integer>();
-
+		Map<String, Object> ret = new HashMap<String, Object>();
+		
 		try {
 			try {
 				jp = f.createParser(json);
@@ -161,6 +168,7 @@ public class ConfigResource extends ServerResource {
 						ret.put(STR_SETTING_PARALLEL, Integer.parseInt(value));
 					} catch (IllegalArgumentException e) {
 						log.error("Invalid parallel connections {}", value);
+						ret.put(STR_INVALID_VALUE, "Invalid value '" + value + "' for key '" + key + "'");
 					}
 					break;
 				case STR_SETTING_BUFFER_SIZE:
@@ -168,6 +176,7 @@ public class ConfigResource extends ServerResource {
 						ret.put(STR_SETTING_BUFFER_SIZE, Integer.parseInt(value));
 					} catch (IllegalArgumentException e) {
 						log.error("Invalid buffer size {}", value);
+						ret.put(STR_INVALID_VALUE, "Invalid value '" + value + "' for key '" + key + "'");
 					}
 					break;
 				case STR_SETTING_QUEUE_CAPACITY:
@@ -175,6 +184,7 @@ public class ConfigResource extends ServerResource {
 						ret.put(STR_SETTING_QUEUE_CAPACITY, Integer.parseInt(value));
 					} catch (IllegalArgumentException e) {
 						log.error("Invalid queue capacity {}", value);
+						ret.put(STR_INVALID_VALUE, "Invalid value '" + value + "' for key '" + key + "'");
 					}
 					break;
 				case STR_SETTING_IDLE_TIMEOUT:
@@ -182,6 +192,7 @@ public class ConfigResource extends ServerResource {
 						ret.put(STR_SETTING_IDLE_TIMEOUT, Integer.parseInt(value));
 					} catch (IllegalArgumentException e) {
 						log.error("Invalid idle timeout {}", value);
+						ret.put(STR_INVALID_VALUE, "Invalid value '" + value + "' for key '" + key + "'");
 					}
 					break;
 				case STR_SETTING_HARD_TIMEOUT:
@@ -189,10 +200,12 @@ public class ConfigResource extends ServerResource {
 						ret.put(STR_SETTING_HARD_TIMEOUT, Integer.parseInt(value));
 					} catch (IllegalArgumentException e) {
 						log.error("Invalid hard timeout {}", value);
+						ret.put(STR_INVALID_VALUE, "Invalid value '" + value + "' for key '" + key + "'");
 					}
 					break;
 				default:
 					log.warn("Received invalid key {} parsing SOS config", key);
+					ret.put(STR_INVALID_KEY, "Invalid key '" + key + "'");
 					break;
 				}
 			}

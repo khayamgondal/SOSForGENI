@@ -1,11 +1,13 @@
 package net.floodlightcontroller.sos.web;
 
 import java.io.IOException;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
 import net.floodlightcontroller.sos.ISOSService;
 import net.floodlightcontroller.sos.ISOSService.SOSReturnCode;
+import net.floodlightcontroller.sos.ISOSWhitelistEntry;
 import net.floodlightcontroller.sos.SOSWhitelistEntry;
 
 import org.projectfloodlight.openflow.types.IPv4Address;
@@ -29,6 +31,9 @@ public class WhitelistResource extends ServerResource {
 	protected static final String STR_SERVER_IP = "server-ip-address";
 	protected static final String STR_SERVER_PORT = "server-tcp-port";
 	protected static final String STR_CLIENT_IP = "client-ip-address";
+	protected static final String STR_START_TIME = "start-time";
+	protected static final String STR_STOP_TIME = "stop-time";
+
 
 	@Put
 	@Post
@@ -38,7 +43,7 @@ public class WhitelistResource extends ServerResource {
 		
 		Map<String, String> ret = new HashMap<String, String>();
 
-		SOSWhitelistEntry entry = parseWhitelistEntryFromJson(json);
+		ISOSWhitelistEntry entry = parseWhitelistEntryFromJson(json);
 		if (entry == null) {
 			ret.put(Code.CODE, Code.ERR_JSON);
 			ret.put(Code.MESSAGE, "Error: Could not parse JSON.");
@@ -91,13 +96,16 @@ public class WhitelistResource extends ServerResource {
 	 * @param json
 	 * @return
 	 */
-	private static SOSWhitelistEntry parseWhitelistEntryFromJson(String json) {
+	@SuppressWarnings("deprecation")
+	private static ISOSWhitelistEntry parseWhitelistEntryFromJson(String json) {
 		MappingJsonFactory f = new MappingJsonFactory();
 		JsonParser jp;
 
 		IPv4Address serverIp = IPv4Address.NONE;
 		TransportPort serverPort = TransportPort.NONE;
 		IPv4Address clientIp = IPv4Address.NONE;
+		Date startTime = ISOSWhitelistEntry.NO_RESERVTION;
+		Date stopTime = ISOSWhitelistEntry.NO_RESERVTION;
 
 		if (json == null || json.isEmpty()) {
 			return null;
@@ -143,6 +151,18 @@ public class WhitelistResource extends ServerResource {
 					} catch (IllegalArgumentException e) {
 						log.error("Invalid IPv4 address {}", value);
 					}
+				} else if (key.equals(STR_START_TIME)) {
+					try {
+						startTime = new Date(value); //TODO
+					} catch (IllegalArgumentException e) {
+						log.error("Invalid start time {}", value);
+					}
+				} else if (key.equals(STR_STOP_TIME)) {
+					try {
+						stopTime = new Date(value); //TODO
+					} catch (IllegalArgumentException e) {
+						log.error("Invalid stop time {}", value);
+					}
 				}
 			}
 		} catch (IOException e) {
@@ -150,7 +170,7 @@ public class WhitelistResource extends ServerResource {
 		}
 		
 		if (!serverIp.equals(IPv4Address.NONE) && !serverPort.equals(TransportPort.NONE) && !clientIp.equals(IPv4Address.NONE) ) {
-			return SOSWhitelistEntry.of(serverIp, serverPort, clientIp);
+			return SOSWhitelistEntry.of(serverIp, serverPort, clientIp, startTime, stopTime);
 		} else {
 			return null;
 		}

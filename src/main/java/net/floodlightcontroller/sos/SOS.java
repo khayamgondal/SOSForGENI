@@ -991,12 +991,12 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	 * ****************************/
 
 	@Override
-	public synchronized SOSReturnCode addAgent(SOSAgent agent) {
+	public synchronized SOSReturnCode addAgent(ISOSAgent agent) {
 		if (agents.contains(agent)) { /* MACs are ignored in devices for equality check, so we should only compare IP and ports here */
 			log.error("Found pre-existing agent during agent add. Not adding new agent {}", agent);
 			return SOSReturnCode.ERR_DUPLICATE_AGENT;
 		} else {
-			if (agents.add(agent)) { 
+			if (agents.add((SOSAgent) agent)) { 
 				log.warn("Agent {} added.", agent);
 				statistics.addAgent(agent);
 			} else {
@@ -1028,7 +1028,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	}
 
 	@Override
-	public synchronized SOSReturnCode removeAgent(SOSAgent agent) {
+	public synchronized SOSReturnCode removeAgent(ISOSAgent agent) {
 		if (agents.contains(agent)) { /* MACs are ignored in devices for equality check, so we should only compare IP and ports here */
 			agents.remove(agent);
 			statistics.removeAgent(agent);
@@ -1041,13 +1041,13 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	}
 
 	@Override
-	public synchronized SOSReturnCode addWhitelistEntry(SOSWhitelistEntry entry) {
+	public synchronized SOSReturnCode addWhitelistEntry(ISOSWhitelistEntry entry) {
 		statistics.addWhitelistEntry(entry);
 		return sosConnections.addWhitelistEntry(entry);
 	}
 
 	@Override
-	public synchronized SOSReturnCode removeWhitelistEntry(SOSWhitelistEntry entry) {
+	public synchronized SOSReturnCode removeWhitelistEntry(ISOSWhitelistEntry entry) {
 		statistics.removeWhitelistEntry(entry);
 		return sosConnections.removeWhitelistEntry(entry);
 	}
@@ -1097,5 +1097,21 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	public synchronized SOSReturnCode setQueueCapacity(int packets) {
 		agentQueueCapacity = packets;
 		return SOSReturnCode.CONFIG_SET;
+	}
+
+	@Override
+	public SOSReturnCode ready() {
+		int count = 0;
+		for (ISOSAgent agent : agents) {
+			/* TODO We assume each agent is only capable of a single transfer. */
+			if (agent.getActiveTransfers().isEmpty()) {
+				count++;
+			}
+		}
+		if (count > 1) {
+			return SOSReturnCode.READY;
+		} else {
+			return SOSReturnCode.NOT_READY;
+		}
 	}
 }

@@ -16,14 +16,14 @@ import org.slf4j.LoggerFactory;
 public class SOSConnections  {
 	private static final Logger log = LoggerFactory.getLogger(SOSConnections.class);
 	private static ArrayList<SOSConnection> connections = null;
-	private static Set<SOSWhitelistEntry> whitelist = null;
+	private static Set<ISOSWhitelistEntry> whitelist = null;
 	
 	public SOSConnections() {
 		if (connections == null) {
 			connections = new ArrayList<SOSConnection>();
 		}
 		if (whitelist == null) {
-			whitelist = new HashSet<SOSWhitelistEntry>();
+			whitelist = new HashSet<ISOSWhitelistEntry>();
 		}
 	}
 	
@@ -157,7 +157,7 @@ public class SOSConnections  {
 			}
 		}
 		
-		for (SOSWhitelistEntry entry : whitelist) {
+		for (ISOSWhitelistEntry entry : whitelist) {
 			if (entry.getClientIP().equals(srcIP) && entry.getServerPort().equals(dstPort) && /* don't know the source transport port */
 					entry.getServerIP().equals(dstIP)) {
 				/* We found the packet's headers in our whitelist */
@@ -169,7 +169,7 @@ public class SOSConnections  {
 		return SOSPacketStatus.INACTIVE_UNREGISTERED;
 	}
 	
-	public SOSReturnCode addWhitelistEntry(SOSWhitelistEntry entry) {
+	public SOSReturnCode addWhitelistEntry(ISOSWhitelistEntry entry) {
 		if (whitelist.contains(entry)) {
 			log.error("Found pre-existing whitelist entry during entry add. Not adding new entry {}", entry);
 			return SOSReturnCode.ERR_DUPLICATE_WHITELIST_ENTRY;
@@ -180,7 +180,7 @@ public class SOSConnections  {
 		}
 	}
 
-	public SOSReturnCode removeWhitelistEntry(SOSWhitelistEntry entry) {
+	public SOSReturnCode removeWhitelistEntry(ISOSWhitelistEntry entry) {
 		if (whitelist.contains(entry)) { 
 			whitelist.remove(entry);
 			log.warn("Whitelist entry {} removed.", entry);

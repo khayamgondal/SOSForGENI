@@ -10,7 +10,8 @@ public interface ISOSService extends IFloodlightService {
 		AGENT_ADDED, AGENT_REMOVED,
 		ERR_DUPLICATE_AGENT, ERR_UNKNOWN_AGENT,
 		ENABLED, DISABLED,
-		CONFIG_SET
+		CONFIG_SET,
+		READY, NOT_READY
 	}
 
 	/**
@@ -18,7 +19,7 @@ public interface ISOSService extends IFloodlightService {
 	 * @param json
 	 * @return
 	 */
-	public SOSReturnCode addAgent(SOSAgent agent);
+	public SOSReturnCode addAgent(ISOSAgent agent);
 	
 	/**
 	 * Remove an SOS agent from SOS. Any active SOS
@@ -27,7 +28,7 @@ public interface ISOSService extends IFloodlightService {
 	 * @param agent
 	 * @return
 	 */
-	public SOSReturnCode removeAgent(SOSAgent agent);
+	public SOSReturnCode removeAgent(ISOSAgent agent);
 	
 	/**
 	 * Proactively add someone to the SOS whitelist . Any future 
@@ -35,7 +36,7 @@ public interface ISOSService extends IFloodlightService {
 	 * @param entry
 	 * @return
 	 */
-	public SOSReturnCode addWhitelistEntry(SOSWhitelistEntry entry);
+	public SOSReturnCode addWhitelistEntry(ISOSWhitelistEntry entry);
 	
 	/**
 	 * Remove a whitelist entry from SOS. Any active SOS sessions
@@ -43,7 +44,7 @@ public interface ISOSService extends IFloodlightService {
 	 * @param entry
 	 * @return
 	 */
-	public SOSReturnCode removeWhitelistEntry(SOSWhitelistEntry entry);
+	public SOSReturnCode removeWhitelistEntry(ISOSWhitelistEntry entry);
 	
 	/**
 	 * Enable SOS
@@ -93,4 +94,14 @@ public interface ISOSService extends IFloodlightService {
 	 * @return
 	 */
 	public SOSReturnCode setQueueCapacity(int packets);
+	
+	/**
+	 * Check if SOS is able to handle an additional data transfer
+	 * at this moment in time. This is a poll operation and does not
+	 * guarantee resource availability. A time-based whitelist entry
+	 * should be used to guarantee service availability during a 
+	 * particular time.
+	 * @return
+	 */
+	public SOSReturnCode ready();
 }
