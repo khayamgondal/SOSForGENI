@@ -37,7 +37,7 @@ public class SOSConnectionSerializer extends JsonSerializer<ISOSConnection> {
 		jGen.writeObjectField("route-client-to-agent", conn.getClientSideRoute());
 		jGen.writeObjectField("route-server-to-agent", conn.getServerSideRoute());
 		jGen.writeObjectField("route-agent-to-agent", conn.getInterAgentRoute());
-		jGen.writeStringField("route-client-to-agent", conn.getTransferID().toString());
+		jGen.writeStringField("transfer-id", conn.getTransferID().toString());
 		jGen.writeStringField("time-init", conn.getInitTime() == null ? "none" : conn.getInitTime().toString());
 		jGen.writeStringField("time-start", conn.getStartTime() == null ? "none" : conn.getStartTime().toString());
 		jGen.writeStringField("time-stop", conn.getStopTime() == null ? "none" : conn.getStopTime().toString());
