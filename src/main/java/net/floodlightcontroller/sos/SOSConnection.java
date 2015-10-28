@@ -26,6 +26,7 @@ public class SOSConnection implements ISOSConnection {
 	private Date initTime;
 	private Date startTime;
 	private Date stopTime;
+	private ISOSTerminationStats stats;
 	
 	public SOSConnection(SOSRoute clientToAgent, SOSRoute interAgent,
 			SOSRoute serverToAgent, int numSockets, 
@@ -53,6 +54,7 @@ public class SOSConnection implements ISOSConnection {
 		this.flowTimeout = flowTimeout;
 		this.flowNames = new HashSet<String>();
 		this.initTime = new Date();
+		this.stats = null;
 	}
 	
 	/**
@@ -129,6 +131,10 @@ public class SOSConnection implements ISOSConnection {
 		this.startTime = new Date(); /* When the agents completed handshake */
 	}
 	
+	public void setTerminationStats(ISOSTerminationStats stats) {
+		this.stats = stats;
+	}
+	
 	@Override
 	public SOSAgent getClientSideAgent() {
 		return (SOSAgent) this.clientToAgent.getDstDevice();
@@ -172,6 +178,11 @@ public class SOSConnection implements ISOSConnection {
 	@Override
 	public int getFlowTimeout() {
 		return flowTimeout;
+	}
+	
+	@Override 
+	public ISOSTerminationStats getTerminationStats() {
+		return stats;
 	}
 	
 	public Set<String> getFlowNames() {

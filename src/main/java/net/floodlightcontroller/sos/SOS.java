@@ -9,7 +9,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -693,12 +692,12 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 				for (SOSAgent agent : agents) {
 					if (agent.getIPAddr().equals(l3.getSourceAddress()) /* FROM known agent */
 							&& agent.getFeedbackPort().equals(l4.getDestinationPort())) { /* TO our feedback port */
-						UUID uuid = UUID.fromString(new String(((Data) l4.getPayload()).getData() /* TODO , "ASCII-US or UTF-8?" */)); 
-						log.debug("Got termination message from agent {} for UUID {}", agent.getIPAddr(), uuid);
+						ISOSTerminationStats stats = SOSTerminationStats.parseFromJson(new String(((Data) l4.getPayload()).getData() /* TODO , "ASCII-US or UTF-8?" */)); 
+						log.debug("Got termination message from agent {} for UUID {}", agent.getIPAddr(), stats.getTransferID());
 
-						SOSConnection conn = sosConnections.getConnection(uuid);
+						SOSConnection conn = sosConnections.getConnection(stats.getTransferID());
 						if (conn == null) {
-							log.error("Could not locate UUID {} in connection storage. Report SOS bug", uuid);
+							log.error("Could not locate UUID {} in connection storage. Report SOS bug", stats.getTransferID());
 							return Command.STOP; /* This WAS for us, but there was an error; no need to forward */
 						}
 
@@ -708,9 +707,10 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 							sfp.deleteFlow(flowName);
 						}
 
-						log.warn("Removing terminated connection {}", uuid);
+						log.warn("Removing terminated connection {}", stats.getTransferID());
 						conn.setStopTime();
-						sosConnections.removeConnection(uuid);
+						conn.setTerminationStats(stats);
+						sosConnections.removeConnection(stats.getTransferID());
 						statistics.removeActiveConnection(conn);
 						return Command.STOP; /* This packet was for our module from an agent */
 					}
@@ -719,7 +719,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		} /* END IF IPv4 packet */
 		return Command.CONTINUE;
 	} /* END of receive(pkt) */
-
+	
 	/**
 	 * Lookup an agent based on the client's current location. Shortest path
 	 * routing is used to determine the closest agent. The route is returned

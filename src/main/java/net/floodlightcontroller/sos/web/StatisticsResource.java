@@ -17,4 +17,3 @@ public class StatisticsResource extends ServerResource {
 		return sosService.getStatistics();
 	}
 }
-

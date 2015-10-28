@@ -43,4 +43,6 @@ public interface ISOSConnection {
 	public Date getStartTime();
 
 	public Date getStopTime();
+
+	public ISOSTerminationStats getTerminationStats();
 }
