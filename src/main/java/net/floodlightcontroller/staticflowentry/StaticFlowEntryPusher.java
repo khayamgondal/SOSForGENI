@@ -700,8 +700,7 @@ implements IOFSwitchListener, IFloodlightModule, IStaticFlowEntryPusherService, 
 			}
 			if (reason != null) {
 				if (OFFlowRemovedReason.DELETE == reason) {
-					log.error("Got a FlowRemove message for a infinite " + 
-							"timeout flow: {} from switch {}", msg, sw);
+					log.debug("Got a FlowRemove message for a infinite " + "timeout flow: {} from switch {}", msg, sw);
 				} else if (OFFlowRemovedReason.HARD_TIMEOUT == reason || OFFlowRemovedReason.IDLE_TIMEOUT == reason) {
 					/* Remove the Flow from the DB since it timed out */
 					log.debug("Received an IDLE or HARD timeout for an SFP flow. Removing it from the SFP DB.");
