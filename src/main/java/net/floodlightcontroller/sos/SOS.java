@@ -48,6 +48,7 @@ import net.floodlightcontroller.core.module.IFloodlightService;
 import net.floodlightcontroller.devicemanager.IDevice;
 import net.floodlightcontroller.devicemanager.IDeviceService;
 import net.floodlightcontroller.devicemanager.SwitchPort;
+import net.floodlightcontroller.linkdiscovery.ILinkDiscoveryService;
 import net.floodlightcontroller.packet.ARP;
 import net.floodlightcontroller.packet.Data;
 import net.floodlightcontroller.packet.Ethernet;
@@ -57,11 +58,13 @@ import net.floodlightcontroller.packet.TCP;
 import net.floodlightcontroller.packet.UDP;
 import net.floodlightcontroller.restserver.IRestApiService;
 import net.floodlightcontroller.routing.IRoutingService;
+import net.floodlightcontroller.routing.Link;
 import net.floodlightcontroller.routing.Route;
 import net.floodlightcontroller.sos.web.SOSWebRoutable;
 import net.floodlightcontroller.staticflowentry.IStaticFlowEntryPusherService;
 import net.floodlightcontroller.threadpool.IThreadPoolService;
 import net.floodlightcontroller.topology.ITopologyService;
+import net.floodlightcontroller.topology.NodePortTuple;
 
 /**
  * Steroid OpenFlow Service Module
@@ -78,6 +81,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	private static IRestApiService restApiService;
 	private static ITopologyService topologyService;
 	private static IThreadPoolService threadPoolService;
+	private static ILinkDiscoveryService linkDiscoveryService;
 
 	private static ScheduledFuture<?> agentMonitor;
 
@@ -93,6 +97,8 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	private static int agentQueueCapacity;
 	private static int agentNumParallelSockets;
 	private static short flowTimeout;
+	private static long routeMaxLatency; //TODO
+	private static long latencyDifferenceThreshold;
 
 	private static SOSStatistics statistics;
 
@@ -162,6 +168,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		l.add(IRestApiService.class);
 		l.add(ITopologyService.class);
 		l.add(IThreadPoolService.class);
+		l.add(ILinkDiscoveryService.class);
 		return l;
 	}
 
@@ -175,6 +182,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		restApiService = context.getServiceImpl(IRestApiService.class);
 		topologyService = context.getServiceImpl(ITopologyService.class);
 		threadPoolService = context.getServiceImpl(IThreadPoolService.class);
+		linkDiscoveryService = context.getServiceImpl(ILinkDiscoveryService.class);
 
 		agents = new HashSet<SOSAgent>();
 		sosConnections = new SOSConnections();
@@ -199,6 +207,8 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			agentNumParallelSockets = Integer.parseInt(configOptions.get("parallel-tcp-sockets") == null ? "1000" : configOptions.get("parallel-tcp-sockets"));
 			flowTimeout = Short.parseShort(configOptions.get("flow-timeout") == null ? "60" : configOptions.get("flow-timeout"));
 			enabled = Boolean.parseBoolean(configOptions.get("enabled") == null ? "true" : configOptions.get("enabled")); /* enabled by default if not present --> listing module is enabling */
+			routeMaxLatency = Long.parseLong(configOptions.get("max-route-to-agent-latency") == null ? "10" : configOptions.get("max-route-to-agent-latency"));
+			latencyDifferenceThreshold = Long.parseLong(configOptions.get("route-latency-difference-threshold") == null ? "3" : configOptions.get("route-latency-difference-threshold"));
 
 		} catch (IllegalArgumentException | NullPointerException ex) {
 			log.error("Incorrect SOS configuration options. Required: 'controller-mac', 'buffer-size', 'queue-capacity', 'parallel-tcp-sockets', 'flow-timeout', 'enabled'", ex);
@@ -719,7 +729,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		} /* END IF IPv4 packet */
 		return Command.CONTINUE;
 	} /* END of receive(pkt) */
-	
+
 	/**
 	 * Lookup an agent based on the client's current location. Shortest path
 	 * routing is used to determine the closest agent. The route is returned
@@ -773,9 +783,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 							shortestPath = r;
 							closestAgent = agent;
 							closestAgent.setMACAddr(d.getMACAddress()); /* set the MAC while we're here */
-						} else if (r != null 
-								&& shortestPath.getPath().size() >= r.getPath().size() /* Allow distance ties to progress to... */
-								&& closestAgent.getNumTransfersServing() > agent.getNumTransfersServing()) { /* ...agent load factor as tie-breaker */
+						} else if (r != null && BEST_AGENT.A2 == selectBestAgent(closestAgent, shortestPath, agent, r)) { /* A2 is 2nd agent, meaning replace if better */
 							if (log.isDebugEnabled()) { /* Use isDebugEnabled() when we have to create a new object for the log */
 								log.debug("Found new agent {} w/shorter route. Old route {}; new route {}", new Object[] { agent, shortestPath, r});
 							}
@@ -806,6 +814,102 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		}
 
 		return new SOSRoute(dev, closestAgent, shortestPath);
+	}
+	
+	/*
+	 * Used to more cleanly define a winning agent in the selection method below
+	 */
+	private enum BEST_AGENT { A1, A2, NEITHER };
+	
+	/**
+	 * Based on the latency of the route for each agent and the load of each agent, 
+	 * determine which agent should be used. Low latency is preferred over agent load.
+	 * 
+	 * @param a1
+	 * @param r1
+	 * @param a2
+	 * @param r2
+	 * @return BEST_AGENT.A1 or BEST_AGENT.A2, whichever wins
+	 */
+	private static BEST_AGENT selectBestAgent(SOSAgent a1, Route r1, SOSAgent a2, Route r2) {
+		if (a1 == null) {
+			throw new IllegalArgumentException("Agent a1 cannot be null");
+		} else if (a2 == null) {
+			throw new IllegalArgumentException("Agent a2 cannot be null");
+		} else if (r1 == null) {
+			throw new IllegalArgumentException("Route r1 cannot be null");
+		} else if (r2 == null) {
+			throw new IllegalArgumentException("Route r2 cannot be null");
+		}
+		
+		long a1_latency = computeLatency(r1);
+		int a1_load = a1.getNumTransfersServing();
+		
+		long a2_latency = computeLatency(r2);
+		int a2_load = a2.getNumTransfersServing();
+		
+		/* 
+		 * How to determine a winner?
+		 * 
+		 * An agent is the "best" if that agent is closer to the client/server
+		 * than the other agent. Latency is the primary weight, since we want
+		 * to avoid selecting an agent at the remote site. After latency, we can
+		 * use the load, which will serve to select the closest agent that is
+		 * least heavily loaded. Lastly, hop count could also be considered, but this
+		 * shouldn't manner, since it's included in latency (unless SW switches are
+		 * a part of this hop count).
+		 */
+		
+		/* Check if latencies are different enough to imply different geographic locations */
+		if (Math.abs(a1_latency - a2_latency) <= latencyDifferenceThreshold) {
+			/* The agents are at the same location (most likely) */
+			if (log.isDebugEnabled()) {
+				log.debug("Agents {} and {} with latencies {} and {} are at the same location", new Object[] { a1, a2, a1_latency, a2_latency });
+			}
+			
+			/* Pick agent with the least load */
+			if (a1_load <= a2_load) {
+				return BEST_AGENT.A1;
+			} else {
+				return BEST_AGENT.A2;
+			}
+		} else {
+			/* The agents are at different locations (most likely) */
+			if (log.isDebugEnabled()) {
+				log.debug("Agents {} and {} with latencies {} and {} are at different locations", new Object[] { a1, a2, a1_latency, a2_latency });
+			}
+			
+			/* Pick the agent with the lowest latency */
+			if (a1_latency <= a2_latency) {
+				return BEST_AGENT.A1;
+			} else {
+				return BEST_AGENT.A2;
+			}
+		}
+	}
+
+	private static long computeLatency(Route r) {
+		long latency = 0;
+		for (int i = 0; i < r.getPath().size(); i++) {
+			if (i % 2 == 1) { /* Only get odd for links [npt0, npt1]---[npt2, npt3]---[npt4, npt5] */
+				NodePortTuple npt = r.getPath().get(i);
+				Set<Link> links = linkDiscoveryService.getPortLinks().get(npt);
+				if (links == null || links.isEmpty()) {
+					log.warn("Skipping NodePortTuple on network edge (i.e. has no associated links)");
+					continue;
+				} else {
+					for (Link l : links) {
+						if (l.getSrc().equals(npt.getNodeId()) && l.getSrcPort().equals(npt.getPortId())) {
+							log.debug("Adding link latency {}", l);
+							latency = latency + l.getLatency().getValue();
+							break;
+						}
+					}
+				}
+			}
+		}
+		log.debug("Computed overall latency {}ms for route {}", latency, r);
+		return latency;
 	}
 
 	/**
@@ -1039,7 +1143,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			return SOSReturnCode.ERR_UNKNOWN_AGENT;
 		}
 	}
-	
+
 	@Override
 	public Set<? extends ISOSAgent> getAgents() {
 		return Collections.unmodifiableSet((Set<? extends ISOSAgent>) agents);
@@ -1056,7 +1160,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		statistics.removeWhitelistEntry(entry);
 		return sosConnections.removeWhitelistEntry(entry);
 	}
-	
+
 	@Override
 	public Set<? extends ISOSWhitelistEntry> getWhitelistEntries() {
 		return sosConnections.getWhitelistEntries(); /* already unmodifiable */
@@ -1075,7 +1179,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		enabled = false;
 		return SOSReturnCode.DISABLED;
 	}
-	
+
 	@Override
 	public boolean isEnabled() {
 		return enabled;
@@ -1094,12 +1198,12 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		}
 		return SOSReturnCode.CONFIG_SET;
 	}
-	
+
 	@Override
 	public int getFlowIdleTimeout() {
 		return flowTimeout;
 	}
-	
+
 	@Override
 	public int getFlowHardTimeout() {
 		return 0;
@@ -1111,7 +1215,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		log.warn("Set number of parallel connections to {}", num);
 		return SOSReturnCode.CONFIG_SET;
 	}
-	
+
 	@Override
 	public int getNumParallelConnections() {
 		return agentNumParallelSockets;
@@ -1122,7 +1226,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		bufferSize = bytes;
 		return SOSReturnCode.CONFIG_SET;
 	}
-	
+
 	@Override
 	public int getBufferSize() {
 		return bufferSize;
@@ -1133,7 +1237,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		agentQueueCapacity = packets;
 		return SOSReturnCode.CONFIG_SET;
 	}
-	
+
 	@Override
 	public int getQueueCapacity() {
 		return agentQueueCapacity;
