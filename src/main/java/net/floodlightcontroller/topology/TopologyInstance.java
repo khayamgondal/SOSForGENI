@@ -551,7 +551,7 @@ public class TopologyInstance {
 
                 if (seen.containsKey(neighbor)) continue;
 
-                if (linkCost == null || linkCost.get(link)==null) w = 1;
+                if (linkCost == null || linkCost.get(link)==null) w = (int) link.getLatency().getValue(); /* TODO assume latency fits in an int, which it should for all practical purposes */
                 else w = linkCost.get(link);
 
                 int ndist = cdist + w; // the weight of the link, always 1 in current version of floodlight.

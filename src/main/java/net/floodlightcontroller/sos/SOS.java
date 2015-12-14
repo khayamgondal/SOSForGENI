@@ -98,7 +98,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	private static int agentNumParallelSockets;
 	private static short flowTimeout;
 	private static long routeMaxLatency; //TODO
-	private static long latencyDifferenceThreshold;
+	private static long latencyDifferenceThreshold = 10;
 
 	private static SOSStatistics statistics;
 
@@ -208,10 +208,10 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			flowTimeout = Short.parseShort(configOptions.get("flow-timeout") == null ? "60" : configOptions.get("flow-timeout"));
 			enabled = Boolean.parseBoolean(configOptions.get("enabled") == null ? "true" : configOptions.get("enabled")); /* enabled by default if not present --> listing module is enabling */
 			routeMaxLatency = Long.parseLong(configOptions.get("max-route-to-agent-latency") == null ? "10" : configOptions.get("max-route-to-agent-latency"));
-			latencyDifferenceThreshold = Long.parseLong(configOptions.get("route-latency-difference-threshold") == null ? "3" : configOptions.get("route-latency-difference-threshold"));
+			latencyDifferenceThreshold = Long.parseLong(configOptions.get("route-latency-difference-threshold") == null ? "10" : configOptions.get("route-latency-difference-threshold"));
 
 		} catch (IllegalArgumentException | NullPointerException ex) {
-			log.error("Incorrect SOS configuration options. Required: 'controller-mac', 'buffer-size', 'queue-capacity', 'parallel-tcp-sockets', 'flow-timeout', 'enabled'", ex);
+			log.error("Incorrect SOS configuration options. Required: 'controller-mac', 'buffer-size', 'queue-capacity', 'parallel-tcp-sockets', 'flow-timeout', 'enabled', 'max-route-to-agent-latency', 'route-latency-difference-threshold'", ex);
 			throw ex;
 		}
 
