@@ -30,6 +30,7 @@ public class SOSTerminationStats implements ISOSTerminationStats {
 	private int std_sent_bytes;
 	private int avg_chunks;
 	private int std_chunks;
+	private boolean is_client_side_agent;
 
 	private SOSTerminationStats() { }
 
@@ -119,6 +120,9 @@ public class SOSTerminationStats implements ISOSTerminationStats {
 				case STR_KEY_TRANSFER_ID:
 					stats.transfer_id = UUID.fromString(value); /* let this exception propagate out */
 					break;
+				case STR_KEY_TYPE:
+					stats.is_client_side_agent = (value.trim().equalsIgnoreCase("client") ? true : false);
+					break;
 				default:
 					log.warn("Got unknown termination stats key:value of {}:{}", key, value);
 					break;
@@ -163,5 +167,10 @@ public class SOSTerminationStats implements ISOSTerminationStats {
 	@Override
 	public int getChunksStd() {
 		return std_chunks;
+	}
+	
+	@Override
+	public boolean isClientSideAgent() {
+		return is_client_side_agent;
 	}
 }

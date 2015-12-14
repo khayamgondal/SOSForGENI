@@ -705,6 +705,10 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 						ISOSTerminationStats stats = SOSTerminationStats.parseFromJson(new String(((Data) l4.getPayload()).getData() /* TODO , "ASCII-US or UTF-8?" */)); 
 						log.debug("Got termination message from agent {} for UUID {}", agent.getIPAddr(), stats.getTransferID());
 
+						if (stats.isClientSideAgent()) { /* TODO wait for both agent termination messages before removing. */
+							return Command.STOP;
+						}
+						
 						SOSConnection conn = sosConnections.getConnection(stats.getTransferID());
 						if (conn == null) {
 							log.error("Could not locate UUID {} in connection storage. Report SOS bug", stats.getTransferID());

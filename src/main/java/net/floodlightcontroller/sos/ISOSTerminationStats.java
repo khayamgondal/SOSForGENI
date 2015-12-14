@@ -14,6 +14,7 @@ public interface ISOSTerminationStats {
 	public static final String STR_KEY_SENT_BYTES_STD = "std_sent_bytes";
 	public static final String STR_KEY_CHUNKS_AVG = "avg_chunks";
 	public static final String STR_KEY_CHUNKS_STD = "std_chunks";
+	public static final String STR_KEY_TYPE = "type";
 	
 	public UUID getTransferID();
 	
@@ -26,4 +27,6 @@ public interface ISOSTerminationStats {
 	public int getChunksAvg();
 	
 	public int getChunksStd();
+	
+	public boolean isClientSideAgent();
 }
