@@ -23,16 +23,16 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 @JsonSerialize(using=SOSTerminationStatsSerializer.class)
 public class SOSTerminationStats implements ISOSTerminationStats {
 	private static final Logger log = LoggerFactory.getLogger(SOSTerminationStats.class);
-	
+
 	private UUID transfer_id;
 	private int overhead;
 	private int avg_sent_bytes;
 	private int std_sent_bytes;
 	private int avg_chunks;
 	private int std_chunks;
-	
+
 	private SOSTerminationStats() { }
-	
+
 	/**
 	 * Take a raw JSON string received from an SOS agent and
 	 * parse it into an ISOSTerminationStats object. The assumption
@@ -77,22 +77,47 @@ public class SOSTerminationStats implements ISOSTerminationStats {
 				} 
 				switch (key) {
 				case STR_KEY_CHUNKS_AVG:
-					stats.avg_chunks = Integer.parseInt(value);
+					try {
+						stats.avg_chunks = Integer.parseInt(value);
+					} catch (NumberFormatException e) {
+						log.error("Could not parse '{}' of '{}'. Using default of 0.", STR_KEY_CHUNKS_AVG, value);
+						stats.avg_chunks = 0;
+					}
 					break;
 				case STR_KEY_CHUNKS_STD:
-					stats.std_chunks = Integer.parseInt(value);
+					try {
+						stats.std_chunks = Integer.parseInt(value);
+					} catch (NumberFormatException e) {
+						log.error("Could not parse '{}' of '{}'. Using default of 0.", STR_KEY_CHUNKS_STD, value);
+						stats.std_chunks = 0;
+					}
 					break;
 				case STR_KEY_OVERHEAD:
-					stats.overhead = Integer.parseInt(value);
+					try {
+						stats.overhead = Integer.parseInt(value);
+					} catch (NumberFormatException e) {
+						log.error("Could not parse '{}' of '{}'. Using default of 0.", STR_KEY_OVERHEAD, value);
+						stats.overhead = 0;
+					}
 					break;
 				case STR_KEY_SENT_BYTES_AVG:
+					try {
 					stats.avg_sent_bytes = Integer.parseInt(value);
+					} catch (NumberFormatException e) {
+						log.error("Could not parse '{}' of '{}'. Using default of 0.", STR_KEY_SENT_BYTES_AVG, value);
+						stats.avg_sent_bytes = 0;
+					}
 					break;
 				case STR_KEY_SENT_BYTES_STD:
-					stats.std_sent_bytes = Integer.parseInt(value);
+					try {
+						stats.std_sent_bytes = Integer.parseInt(value);
+					} catch (NumberFormatException e) {
+						log.error("Could not parse '{}' of '{}'. Using default of 0.", STR_KEY_SENT_BYTES_STD, value);
+						stats.std_sent_bytes = 0;
+					}
 					break;
 				case STR_KEY_TRANSFER_ID:
-					stats.transfer_id = UUID.fromString(value);
+					stats.transfer_id = UUID.fromString(value); /* let this exception propagate out */
 					break;
 				default:
 					log.warn("Got unknown termination stats key:value of {}:{}", key, value);
@@ -102,39 +127,39 @@ public class SOSTerminationStats implements ISOSTerminationStats {
 		} catch (IOException e) {
 			log.error("Error parsing JSON into SOSTerminationStats {}", e);
 		}
-		
+
 		if (stats.transfer_id == null) {
 			log.warn("Could not locate a valid transfer ID in termination stats {}", json);
 		}
-		
+
 		return stats;
 	}
-	
+
 	@Override
 	public UUID getTransferID() {
 		return transfer_id;
 	}
-	
+
 	@Override
 	public int getOverhead() {
 		return overhead;
 	}
-	
+
 	@Override
 	public int getSentBytesAvg() {
 		return avg_sent_bytes;
 	}
-	
+
 	@Override
 	public int getSentBytesStd() {
 		return std_sent_bytes;
 	}
-	
+
 	@Override
 	public int getChunksAvg() {
 		return avg_chunks;
 	}
-	
+
 	@Override
 	public int getChunksStd() {
 		return std_chunks;
