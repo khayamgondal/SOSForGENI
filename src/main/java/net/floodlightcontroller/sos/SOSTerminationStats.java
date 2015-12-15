@@ -121,7 +121,7 @@ public class SOSTerminationStats implements ISOSTerminationStats {
 					stats.transfer_id = UUID.fromString(value); /* let this exception propagate out */
 					break;
 				case STR_KEY_TYPE:
-					stats.is_client_side_agent = (value.trim().equalsIgnoreCase("client") ? true : false);
+					stats.is_client_side_agent = (value.trim().equalsIgnoreCase(STR_VALUE_TYPE_CLIENT) ? true : false);
 					break;
 				default:
 					log.warn("Got unknown termination stats key:value of {}:{}", key, value);

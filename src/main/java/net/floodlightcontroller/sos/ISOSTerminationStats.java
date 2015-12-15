@@ -15,6 +15,8 @@ public interface ISOSTerminationStats {
 	public static final String STR_KEY_CHUNKS_AVG = "avg_chunks";
 	public static final String STR_KEY_CHUNKS_STD = "std_chunks";
 	public static final String STR_KEY_TYPE = "type";
+	public static final String STR_VALUE_TYPE_CLIENT = "client";
+
 	
 	public UUID getTransferID();
 	
