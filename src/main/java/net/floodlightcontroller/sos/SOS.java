@@ -671,7 +671,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 					sendClientSideAgentSparkPacket(cntx, l2, newSOSconnection);
 
 				} else if (packetStatus == SOSPacketStatus.ACTIVE_SERVER_SIDE_AGENT_TO_SERVER) {					
-					SOSConnection conn = sosConnections.getConnection(l3.getDestinationAddress(), l4.getDestinationPort());
+					SOSConnection conn = sosConnections.getConnection(l3.getSourceAddress(), l3.getDestinationAddress(), l4.getDestinationPort());
 
 					if (conn == null) {
 						log.error("Should have found an SOSConnection in need of a server-side agent TCP port!");

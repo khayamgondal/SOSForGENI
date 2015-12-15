@@ -44,11 +44,12 @@ public class SOSConnections  {
 			SOSRoute serverToAgent, int numSockets, 
 			int queueCapacity, int bufferSize,
 			int flowTimeout) {
-		connections.add(new SOSConnection(clientToAgent, interAgent,
+		SOSConnection conn = new SOSConnection(clientToAgent, interAgent,
 				serverToAgent, numSockets,
 				queueCapacity, bufferSize,
-				flowTimeout)); 
-		return getConnection(clientToAgent.getSrcDevice().getIPAddr(), ((SOSClient) clientToAgent.getSrcDevice()).getTcpPort());
+				flowTimeout);
+		connections.add(conn); 
+		return conn;
 	}
 	
 	/**
@@ -67,17 +68,18 @@ public class SOSConnections  {
 	}
 	
 	/**
-	 * Lookup an ongoing connection based on the server or client
-	 * IP address and TCP port
-	 * @param ip
-	 * @param port
+	 * Lookup an ongoing connection based on the dst IP and dst port
+	 * (assumed to be the server) and the src IP (assumed to the 
+	 * server-side agent).
+	 * @param srcIp
+	 * @param dstIp
+	 * @param dstPort
 	 * @return
 	 */
-	public SOSConnection getConnection(IPv4Address ip, TransportPort port) {
+	public SOSConnection getConnection(IPv4Address srcIp, IPv4Address dstIp, TransportPort dstPort) {
 		for (SOSConnection conn : connections) {
-			if (conn.getClient().getIPAddr().equals(ip) && conn.getClient().getTcpPort().equals(port)) {
-				return conn;
-			} else if (conn.getServer().getIPAddr().equals(ip) && conn.getServer().getTcpPort().equals(port)) {
+			if (conn.getServer().getIPAddr().equals(dstIp) && conn.getServer().getTcpPort().equals(dstPort) &&
+					conn.getServerSideAgent().getIPAddr().equals(srcIp)) {
 				return conn;
 			}
 		}
