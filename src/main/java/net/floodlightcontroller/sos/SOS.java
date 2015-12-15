@@ -98,7 +98,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	private static int agentNumParallelSockets;
 	private static short flowTimeout;
 	private static long routeMaxLatency; //TODO
-	private static long latencyDifferenceThreshold = 10;
+	private static long latencyDifferenceThreshold = 20;
 
 	private static SOSStatistics statistics;
 
@@ -127,7 +127,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 					}
 
 					if (sp != null) { /* We know specifically where the agent is located */
-						log.debug("ARPing for agent {} with known true attachment point {}", a, sp);
+						log.trace("ARPing for agent {} with known true attachment point {}", a, sp);
 						arpForDevice(
 								a.getIPAddr(), 
 								(a.getIPAddr().and(IPv4Address.of("255.255.255.0"))).or(IPv4Address.of("0.0.0.254")) /* Doesn't matter really; must be same subnet though */, 
@@ -139,7 +139,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 						Set<DatapathId> switches = switchService.getAllSwitchDpids();
 						log.warn("Agent {} does not have known/true attachment point(s). Flooding ARP on all switches", a);
 						for (DatapathId sw : switches) {
-							log.debug("Agent {} does not have known/true attachment point(s). Flooding ARP on switch {}", a, sw);
+							log.trace("Agent {} does not have known/true attachment point(s). Flooding ARP on switch {}", a, sw);
 							arpForDevice(
 									a.getIPAddr(), 
 									(a.getIPAddr().and(IPv4Address.of("255.255.255.0"))).or(IPv4Address.of("0.0.0.254")) /* Doesn't matter really; must be same subnet though */, 
@@ -249,7 +249,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		 * the DeviceManager. This makes our job easier :) 
 		 */
 		if (type == OFType.PACKET_IN && name.equalsIgnoreCase("devicemanager")) {
-			log.debug("SOS is telling DeviceManager to run before.");
+			log.trace("SOS is telling DeviceManager to run before.");
 			return true;
 		} else {
 			return false;
@@ -259,7 +259,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	@Override
 	public boolean isCallbackOrderingPostreq(OFType type, String name) {
 		if (type == OFType.PACKET_IN && (name.equals("forwarding") || name.equals("hub"))) {
-			log.debug("SOS is telling Forwarding/Hub to run later.");
+			log.trace("SOS is telling Forwarding/Hub to run later.");
 			return true;
 		} else {
 			return false;
@@ -548,11 +548,11 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 				IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 
 		if (l2.getEtherType() == EthType.IPv4) {
-			log.debug("Got IPv4 Packet");
+			log.trace("Got IPv4 Packet");
 
 			IPv4 l3 = (IPv4) l2.getPayload();
 
-			log.debug("Got IpProtocol {}", l3.getProtocol());
+			log.trace("Got IpProtocol {}", l3.getProtocol());
 
 			if (l3.getProtocol().equals(IpProtocol.TCP)) {
 				log.debug("Got TCP Packet on port " + (pi.getVersion().compareTo(OFVersion.OF_12) < 0 ? 
@@ -568,7 +568,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 				 */
 
 				/* Lookup the source IP address to see if it belongs to a client with a connection */
-				log.debug("(" + l4.getSourcePort().toString() + ", " + l4.getDestinationPort().toString() + ")");
+				log.trace("(" + l4.getSourcePort().toString() + ", " + l4.getDestinationPort().toString() + ")");
 
 				SOSPacketStatus packetStatus = sosConnections.getSOSPacketStatus(
 						l3.getSourceAddress(), l3.getDestinationAddress(),
@@ -585,14 +585,14 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 						log.error("Source device was not known. Is DeviceManager running before SOS as it should? Report SOS bug.");
 						return Command.STOP;
 					} else {
-						log.debug("Source device is {}", srcDevice);
+						log.trace("Source device is {}", srcDevice);
 					}
 					if (dstDevice == null) {
 						log.warn("Destination device was not known. ARPing for destination to try to learn it. Dropping TCP packet; TCP should keep retrying.");
 						arpForDevice(l3.getDestinationAddress(), l3.getSourceAddress(), l2.getSourceMACAddress(), VlanVid.ofVlan(l2.getVlanID()), sw);
 						return Command.STOP;
 					} else {
-						log.debug("Destination device is {}", dstDevice);
+						log.trace("Destination device is {}", dstDevice);
 					}
 
 					/* Init Agent/Client */
@@ -689,7 +689,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 					log.debug("Received an unregistered TCP packet. Register the connection to have it operated on by SOS.");
 					return Command.CONTINUE; /* Short circuit default return for unregistered -- let Forwarding/Hub handle it */
 				} else {
-					log.error("Received a TCP packet w/status {} that belongs to an ongoing SOS session. Check accuracy of flows/Report SOS bug", packetStatus);
+					log.error("Received a TCP packet w/status {} that belongs to an ongoing SOS session. Report SOS bug", packetStatus);
 				}
 
 				/* We don't want other modules messing with our SOS TCP session (namely Forwarding/Hub) */
@@ -816,7 +816,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 							closestAgent.setMACAddr(d.getMACAddress()); /* set the MAC while we're here */
 						} else if (r != null && BEST_AGENT.A2 == selectBestAgent(closestAgent, shortestPath, agent, r)) { /* A2 is 2nd agent, meaning replace if better */
 							if (log.isDebugEnabled()) { /* Use isDebugEnabled() when we have to create a new object for the log */
-								log.debug("Found new agent {} w/shorter route. Old route {}; new route {}", new Object[] { agent, shortestPath, r});
+								log.debug("Found new best agent {} w/route {}", new Object[] { agent, r});
 							}
 							shortestPath = r;
 							closestAgent = agent;
