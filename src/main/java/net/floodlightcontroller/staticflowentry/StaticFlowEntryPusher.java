@@ -700,10 +700,10 @@ implements IOFSwitchListener, IFloodlightModule, IStaticFlowEntryPusherService, 
 			}
 			if (reason != null) {
 				if (OFFlowRemovedReason.DELETE == reason) {
-					log.debug("Got a FlowRemove message for a infinite " + "timeout flow: {} from switch {}", msg, sw);
+					log.debug("Got flow-removed message for DELETED flow {} from switch {}", msg, sw);
 				} else if (OFFlowRemovedReason.HARD_TIMEOUT == reason || OFFlowRemovedReason.IDLE_TIMEOUT == reason) {
 					/* Remove the Flow from the DB since it timed out */
-					log.debug("Received an IDLE or HARD timeout for an SFP flow. Removing it from the SFP DB.");
+					log.debug("Got flow-removed message for IDLE or HARD timeout. Removing flow from the SFP DB. Flow {}", msg);
 					/* 
 					 * Lookup the flow based on the flow contents. We do not know/care about the name of the 
 					 * flow based on this message, but we can get the table values for this switch and search.

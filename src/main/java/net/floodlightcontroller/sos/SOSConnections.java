@@ -9,7 +9,6 @@ import java.util.UUID;
 import net.floodlightcontroller.sos.ISOSService.SOSReturnCode;
 
 import org.projectfloodlight.openflow.types.IPv4Address;
-import org.projectfloodlight.openflow.types.OFPort;
 import org.projectfloodlight.openflow.types.TransportPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,25 +49,6 @@ public class SOSConnections  {
 				queueCapacity, bufferSize,
 				flowTimeout)); 
 		return getConnection(clientToAgent.getSrcDevice().getIPAddr(), ((SOSClient) clientToAgent.getSrcDevice()).getTcpPort());
-	}
-	
-	/**
-	 * Remove a terminated connection based on the server or client
-	 * IP address and TCP port
-	 * @param ip
-	 * @param port
-	 * @return
-	 */
-	public boolean removeConnection(IPv4Address ip, OFPort port) {
-		for (SOSConnection conn : connections) {
-			if (conn.getClient().getIPAddr().equals(ip) && conn.getClient().getTcpPort().equals(port) ||
-					conn.getServer().getIPAddr().equals(ip) && conn.getServer().getTcpPort().equals(port)) {
-				return (connections.remove(conn)
-						&& conn.getClientSideAgent().removeTransferId(conn.getTransferID())
-						&& conn.getServerSideAgent().removeTransferId(conn.getTransferID()));
-			}
-		}
-		return false;
 	}
 	
 	/**

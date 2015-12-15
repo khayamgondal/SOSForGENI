@@ -523,7 +523,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	}
 
 	/**
-	 * Synchronized, since we don't want to have to worry about multiple connections starting up at the same time.
+	 * Synchronized, so that we don't want to have to worry about multiple connections starting up at the same time.
 	 */
 	@Override
 	public synchronized net.floodlightcontroller.core.IListener.Command receive(
@@ -702,30 +702,57 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 				for (SOSAgent agent : agents) {
 					if (agent.getIPAddr().equals(l3.getSourceAddress()) /* FROM known agent */
 							&& agent.getFeedbackPort().equals(l4.getDestinationPort())) { /* TO our feedback port */
-						ISOSTerminationStats stats = SOSTerminationStats.parseFromJson(new String(((Data) l4.getPayload()).getData() /* TODO , "ASCII-US or UTF-8?" */)); 
+						ISOSTerminationStats stats = SOSTerminationStats.parseFromJson(new String(((Data) l4.getPayload()).getData())); 
 						log.debug("Got termination message from agent {} for UUID {}", agent.getIPAddr(), stats.getTransferID());
 
-						if (stats.isClientSideAgent()) { /* TODO wait for both agent termination messages before removing. */
-							return Command.STOP;
-						}
-						
 						SOSConnection conn = sosConnections.getConnection(stats.getTransferID());
 						if (conn == null) {
 							log.error("Could not locate UUID {} in connection storage. Report SOS bug", stats.getTransferID());
 							return Command.STOP; /* This WAS for us, but there was an error; no need to forward */
 						}
 
-						/* We found it; remove flows; delete from storage */
-						for (String flowName : conn.getFlowNames()) {
-							log.trace("Deleting flow {}", flowName);
-							sfp.deleteFlow(flowName);
+						if (conn.getClientSideAgent().getActiveTransfers().contains(stats.getTransferID()) &&
+								conn.getClientSideAgent().getIPAddr().equals(l3.getSourceAddress()) &&
+								stats.isClientSideAgent()) {
+							log.warn("Received termination message from client side agent {} for transfer ID {}", conn.getClientSideAgent().getIPAddr(), stats.getTransferID());
+							conn.getClientSideAgent().removeTransferId(stats.getTransferID());
+							if (stats.getSentBytesAvg() != 0) { /* only record valid set of stats; dependent on direction of transfer */
+								log.info("Setting stats for client side agent {} for transfer ID {}", conn.getClientSideAgent().getIPAddr(), stats.getTransferID());
+								conn.setTerminationStats(stats);
+							}
+							/* continue; we might have just removed the 2nd agent */
+						} else if (conn.getServerSideAgent().getActiveTransfers().contains(stats.getTransferID()) &&
+								conn.getServerSideAgent().getIPAddr().equals(l3.getSourceAddress()) &&
+								!stats.isClientSideAgent()) {
+							log.warn("Received termination message from server side agent {} for transfer ID {}", conn.getServerSideAgent().getIPAddr(), stats.getTransferID());
+							conn.getServerSideAgent().removeTransferId(stats.getTransferID());
+							if (stats.getSentBytesAvg() != 0) { /* only record valid set of stats; dependent on direction of transfer */
+								log.info("Setting stats for server side agent {} for transfer ID {}", conn.getServerSideAgent().getIPAddr(), stats.getTransferID());
+								conn.setTerminationStats(stats);
+							}
+							/* continue; we might have just removed the 2nd agent */
+						} else if (!conn.getServerSideAgent().getActiveTransfers().contains(stats.getTransferID()) &&
+								!conn.getClientSideAgent().getActiveTransfers().contains(stats.getTransferID())) {
+							log.error("Received termination message for transfer ID {} but both agents were already terminated. Report SOS bug.", stats.getTransferID());
+							return Command.STOP;
+						} else {
+							log.error("SOS in inconsistent state when processing termination message. Report SOS bug. Transfer: {}", conn);
+							return Command.STOP;
 						}
 
-						log.warn("Removing terminated connection {}", stats.getTransferID());
-						conn.setStopTime();
-						conn.setTerminationStats(stats);
-						sosConnections.removeConnection(stats.getTransferID());
-						statistics.removeActiveConnection(conn);
+						/* Not a duplicate check; might have just been notified from the 2nd agent. */ 
+						if (!conn.getServerSideAgent().getActiveTransfers().contains(stats.getTransferID()) &&
+								!conn.getClientSideAgent().getActiveTransfers().contains(stats.getTransferID())) {
+							for (String flowName : conn.getFlowNames()) {
+								log.trace("Deleting flow {}", flowName);
+								sfp.deleteFlow(flowName);
+							}
+
+							log.warn("Received reports from all agents of transfer ID {}. Terminating SOS transfer", stats.getTransferID());
+							conn.setStopTime();
+							sosConnections.removeConnection(stats.getTransferID());
+							statistics.removeActiveConnection(conn);
+						}
 						return Command.STOP; /* This packet was for our module from an agent */
 					}
 				} /* END FROM-AGENT LOOKUP */
@@ -819,12 +846,12 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 
 		return new SOSRoute(dev, closestAgent, shortestPath);
 	}
-	
+
 	/*
 	 * Used to more cleanly define a winning agent in the selection method below
 	 */
 	private enum BEST_AGENT { A1, A2, NEITHER };
-	
+
 	/**
 	 * Based on the latency of the route for each agent and the load of each agent, 
 	 * determine which agent should be used. Low latency is preferred over agent load.
@@ -845,13 +872,13 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		} else if (r2 == null) {
 			throw new IllegalArgumentException("Route r2 cannot be null");
 		}
-		
+
 		long a1_latency = computeLatency(r1);
 		int a1_load = a1.getNumTransfersServing();
-		
+
 		long a2_latency = computeLatency(r2);
 		int a2_load = a2.getNumTransfersServing();
-		
+
 		/* 
 		 * How to determine a winner?
 		 * 
@@ -863,14 +890,14 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 		 * shouldn't manner, since it's included in latency (unless SW switches are
 		 * a part of this hop count).
 		 */
-		
+
 		/* Check if latencies are different enough to imply different geographic locations */
 		if (Math.abs(a1_latency - a2_latency) <= latencyDifferenceThreshold) {
 			/* The agents are at the same location (most likely) */
 			if (log.isDebugEnabled()) {
 				log.debug("Agents {} and {} with latencies {} and {} are at the same location", new Object[] { a1, a2, a1_latency, a2_latency });
 			}
-			
+
 			/* Pick agent with the least load */
 			if (a1_load <= a2_load) {
 				return BEST_AGENT.A1;
@@ -882,7 +909,7 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 			if (log.isDebugEnabled()) {
 				log.debug("Agents {} and {} with latencies {} and {} are at different locations", new Object[] { a1, a2, a1_latency, a2_latency });
 			}
-			
+
 			/* Pick the agent with the lowest latency */
 			if (a1_latency <= a2_latency) {
 				return BEST_AGENT.A1;
