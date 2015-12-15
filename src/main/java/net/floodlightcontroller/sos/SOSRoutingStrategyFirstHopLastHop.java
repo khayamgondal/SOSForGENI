@@ -71,8 +71,10 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
 				if (route.getSrcDevice() instanceof SOSClient) {
 					match.setExact(MatchField.TCP_SRC, ((SOSClient) route.getSrcDevice()).getTcpPort());
+					match.setExact(MatchField.TCP_DST, conn.getServer().getTcpPort()); //TODO verify
 				} else {
 					match.setExact(MatchField.TCP_SRC, ((SOSServer) route.getSrcDevice()).getTcpPort());
+					match.setExact(MatchField.TCP_DST, conn.getClient().getTcpPort()); //TODO verify
 				}
 
 				/* 
@@ -115,8 +117,10 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				match.setExact(MatchField.IPV4_DST, route.getSrcDevice().getIPAddr());
 				match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
 				if (route.getSrcDevice() instanceof SOSClient) {
+					match.setExact(MatchField.TCP_SRC, conn.getServer().getTcpPort()); //TODO verify
 					match.setExact(MatchField.TCP_DST, ((SOSClient) route.getSrcDevice()).getTcpPort());
 				} else {
+					match.setExact(MatchField.TCP_SRC, conn.getClient().getTcpPort()); //TODO verify
 					match.setExact(MatchField.TCP_DST, ((SOSServer) route.getSrcDevice()).getTcpPort());
 				}
 
@@ -166,8 +170,10 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
 				if (route.getSrcDevice() instanceof SOSClient) {
 					match.setExact(MatchField.TCP_SRC, ((SOSClient) route.getSrcDevice()).getTcpPort());
+					match.setExact(MatchField.TCP_DST, conn.getServer().getTcpPort()); //TODO verify
 				} else {
 					match.setExact(MatchField.TCP_SRC, ((SOSServer) route.getSrcDevice()).getTcpPort());
+					match.setExact(MatchField.TCP_DST, conn.getClient().getTcpPort()); //TODO verify
 				}
 				if (factory.getVersion().compareTo(OFVersion.OF_12) < 0) {
 					if (!rewriteMacUponRedirection) { 
@@ -215,8 +221,10 @@ public class SOSRoutingStrategyFirstHopLastHop implements ISOSRoutingStrategy {
 				match.setExact(MatchField.IPV4_DST, route.getSrcDevice().getIPAddr());
 				match.setExact(MatchField.IP_PROTO, IpProtocol.TCP);
 				if (route.getSrcDevice() instanceof SOSClient) {
+					match.setExact(MatchField.TCP_SRC, conn.getClientSideAgent().getDataPort()); //TODO verify
 					match.setExact(MatchField.TCP_DST, ((SOSClient) route.getSrcDevice()).getTcpPort());
 				} else {
+					match.setExact(MatchField.TCP_SRC, conn.getServerSideAgentTcpPort()); //TODO verify
 					match.setExact(MatchField.TCP_DST, ((SOSServer) route.getSrcDevice()).getTcpPort());
 				}
 
