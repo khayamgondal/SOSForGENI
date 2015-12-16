@@ -417,17 +417,6 @@ public class TopologyManager implements IFloodlightModule, ITopologyService, IRo
 	}
 
 	@Override
-	public DatapathId getL2DomainId(DatapathId switchId) {
-		return getL2DomainId(switchId, true);
-	}
-
-	@Override
-	public DatapathId getL2DomainId(DatapathId switchId, boolean tunnelEnabled) {
-		TopologyInstance ti = getCurrentInstance(tunnelEnabled);
-		return ti.getL2DomainId(switchId);
-	}
-
-	@Override
 	public boolean inSameOpenflowDomain(DatapathId switch1, DatapathId switch2) {
 		return inSameOpenflowDomain(switch1, switch2, true);
 	}
@@ -596,23 +585,6 @@ public class TopologyManager implements IFloodlightModule, ITopologyService, IRo
 			boolean tunnelEnabled) {
 		TopologyInstance ti = getCurrentInstance(tunnelEnabled);
 		return ti.isConsistent(oldSw, oldPort, newSw, newPort);
-	}
-
-	////////////////////////////////////////////////////////////////////////
-	////////////////////////////////////////////////////////////////////////
-	/**
-	 * Checks if the two switches are in the same Layer 2 domain.
-	 */
-	@Override
-	public boolean inSameL2Domain(DatapathId switch1, DatapathId switch2) {
-		return inSameL2Domain(switch1, switch2, true);
-	}
-
-	@Override
-	public boolean inSameL2Domain(DatapathId switch1, DatapathId switch2,
-			boolean tunnelEnabled) {
-		TopologyInstance ti = getCurrentInstance(tunnelEnabled);
-		return ti.inSameL2Domain(switch1, switch2);
 	}
 
 	////////////////////////////////////////////////////////////////////////
@@ -1175,7 +1147,12 @@ public class TopologyManager implements IFloodlightModule, ITopologyService, IRo
 	}
 
 	protected void addOrUpdateSwitch(DatapathId sw) {
-		// nothing to do here for the time being.
+		/*TODO react appropriately
+		addSwitch(sw);
+		for (OFPortDesc p : switchService.getSwitch(sw).getPorts()) {
+			addPortToSwitch(sw, p.getPortNo());
+		}
+		*/
 		return;
 	}
 

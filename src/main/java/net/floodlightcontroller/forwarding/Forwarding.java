@@ -20,6 +20,7 @@ package net.floodlightcontroller.forwarding;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -27,6 +28,8 @@ import java.util.Set;
 import net.floodlightcontroller.core.FloodlightContext;
 import net.floodlightcontroller.core.IFloodlightProviderService;
 import net.floodlightcontroller.core.IOFSwitch;
+import net.floodlightcontroller.core.IOFSwitchListener;
+import net.floodlightcontroller.core.PortChangeType;
 import net.floodlightcontroller.core.internal.IOFSwitchService;
 import net.floodlightcontroller.core.module.FloodlightModuleContext;
 import net.floodlightcontroller.core.module.FloodlightModuleException;
@@ -47,11 +50,17 @@ import net.floodlightcontroller.routing.IRoutingDecision;
 import net.floodlightcontroller.routing.IRoutingService;
 import net.floodlightcontroller.routing.Route;
 import net.floodlightcontroller.topology.ITopologyService;
+import net.floodlightcontroller.topology.NodePortTuple;
+import net.floodlightcontroller.util.OFDPAUtils;
+import net.floodlightcontroller.util.OFPortMode;
+import net.floodlightcontroller.util.OFPortModeTuple;
 
 import org.projectfloodlight.openflow.protocol.OFFlowMod;
 import org.projectfloodlight.openflow.protocol.OFFlowModCommand;
+import org.projectfloodlight.openflow.protocol.OFGroupType;
 import org.projectfloodlight.openflow.protocol.OFPacketIn;
 import org.projectfloodlight.openflow.protocol.OFPacketOut;
+import org.projectfloodlight.openflow.protocol.OFPortDesc;
 import org.projectfloodlight.openflow.protocol.OFVersion;
 import org.projectfloodlight.openflow.protocol.action.OFAction;
 import org.projectfloodlight.openflow.protocol.match.Match;
@@ -63,14 +72,16 @@ import org.projectfloodlight.openflow.types.IPv6Address;
 import org.projectfloodlight.openflow.types.IpProtocol;
 import org.projectfloodlight.openflow.types.MacAddress;
 import org.projectfloodlight.openflow.types.OFBufferId;
+import org.projectfloodlight.openflow.types.OFGroup;
 import org.projectfloodlight.openflow.types.OFPort;
 import org.projectfloodlight.openflow.types.OFVlanVidMatch;
+import org.projectfloodlight.openflow.types.TableId;
 import org.projectfloodlight.openflow.types.U64;
 import org.projectfloodlight.openflow.types.VlanVid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class Forwarding extends ForwardingBase implements IFloodlightModule {
+public class Forwarding extends ForwardingBase implements IFloodlightModule, IOFSwitchListener {
 	protected static Logger log = LoggerFactory.getLogger(Forwarding.class);
 
 	@Override
@@ -79,7 +90,7 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule {
 		// We found a routing decision (i.e. Firewall is enabled... it's the only thing that makes RoutingDecisions)
 		if (decision != null) {
 			if (log.isTraceEnabled()) {
-				log.trace("Forwaring decision={} was made for PacketIn={}", decision.getRoutingAction().toString(), pi);
+				log.trace("Forwarding decision={} was made for PacketIn={}", decision.getRoutingAction().toString(), pi);
 			}
 
 			switch(decision.getRoutingAction()) {
@@ -223,6 +234,9 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule {
 					dstDap.getSwitchDPID(),
 					dstDap.getPort(), U64.of(0)); //cookie = 0, i.e., default route
 
+			Match m = createMatchFromPacket(sw, inPort, cntx);
+			U64 cookie = AppCookie.makeCookie(FORWARDING_APP_ID, 0);
+			
 			if (route != null) {
 				log.debug("pushRoute inPort={} route={} " +
 						"destination={}:{}",
@@ -230,15 +244,24 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule {
 						dstDap.getSwitchDPID(),
 						dstDap.getPort()});
 
-				U64 cookie = AppCookie.makeCookie(FORWARDING_APP_ID, 0);
 
-				Match m = createMatchFromPacket(sw, inPort, cntx);
 				log.debug("Cretaing flow rules on the route, match rule: {}", m);
-				pushRoute(route, m, pi, sw.getId(), cookie,
-						cntx, requestFlowRemovedNotifn, false,
+				pushRoute(route, m, pi, sw.getId(), cookie, 
+						cntx, requestFlowRemovedNotifn,
 						OFFlowModCommand.ADD);	
 			} else {
-				log.error("Could not compute route between {} and {}. Dropping packet", srcDevice, dstDevice);
+				/* Route traverses no links --> src/dst devices on same switch */
+				log.debug("Could not compute route. Devices should be on same switch src={} and dst={}", srcDevice, dstDevice);
+				Route r = new Route(srcDevice.getAttachmentPoints()[0].getSwitchDPID(), dstDevice.getAttachmentPoints()[0].getSwitchDPID());
+				List<NodePortTuple> path = new ArrayList<NodePortTuple>(2);
+				path.add(new NodePortTuple(srcDevice.getAttachmentPoints()[0].getSwitchDPID(),
+						srcDevice.getAttachmentPoints()[0].getPort()));
+				path.add(new NodePortTuple(dstDevice.getAttachmentPoints()[0].getSwitchDPID(),
+						dstDevice.getAttachmentPoints()[0].getPort()));
+				r.setPath(path);
+				pushRoute(r, m, pi, sw.getId(), cookie,
+						cntx, requestFlowRemovedNotifn,
+						OFFlowModCommand.ADD);
 			}
 		} else {
 			log.debug("Destination unknown. Flooding packet");
@@ -366,7 +389,9 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule {
 		Set<OFPort> broadcastPorts = this.topologyService.getSwitchBroadcastPorts(sw.getId());
 
 		if (broadcastPorts == null) {
-			return;
+			log.debug("BroadcastPorts returned null. Assuming single switch w/no links.");
+			/* Must be a single-switch w/no links */
+			broadcastPorts = Collections.singleton(OFPort.FLOOD);
 		}
 		
 		for (OFPort p : broadcastPorts) {
@@ -494,5 +519,57 @@ public class Forwarding extends ForwardingBase implements IFloodlightModule {
 	@Override
 	public void startUp(FloodlightModuleContext context) {
 		super.startUp();
+		switchService.addOFSwitchListener(this);
+	}
+
+	@Override
+	public void switchAdded(DatapathId switchId) {
+	}
+
+	@Override
+	public void switchRemoved(DatapathId switchId) {		
+	}
+
+	@Override
+	public void switchActivated(DatapathId switchId) {
+		IOFSwitch sw = switchService.getSwitch(switchId);
+		if (sw == null) {
+			log.warn("Switch {} was activated but had no switch object in the switch service. Perhaps it quickly disconnected", switchId);
+			return;
+		}
+		if (OFDPAUtils.isOFDPASwitch(sw)) {
+			sw.write(sw.getOFFactory().buildFlowDelete()
+					.setTableId(TableId.ALL)
+					.build()
+					);
+			sw.write(sw.getOFFactory().buildGroupDelete()
+					.setGroup(OFGroup.ANY)
+					.setGroupType(OFGroupType.ALL)
+					.build()
+					);
+			sw.write(sw.getOFFactory().buildGroupDelete()
+					.setGroup(OFGroup.ANY)
+					.setGroupType(OFGroupType.INDIRECT)
+					.build()
+					);
+			sw.write(sw.getOFFactory().buildBarrierRequest().build());
+			
+			List<OFPortModeTuple> portModes = new ArrayList<OFPortModeTuple>();
+			for (OFPortDesc p : sw.getPorts()) {
+				portModes.add(OFPortModeTuple.of(p.getPortNo(), OFPortMode.ACCESS));
+			}
+			if (log.isWarnEnabled()) {
+				log.warn("For OF-DPA switch {}, initializing VLAN {} on ports {}", new Object[] { switchId, VlanVid.ZERO, portModes});
+			}
+			OFDPAUtils.addLearningSwitchPrereqs(sw, VlanVid.ZERO, portModes);
+		}
+	}
+
+	@Override
+	public void switchPortChanged(DatapathId switchId, OFPortDesc port, PortChangeType type) {		
+	}
+
+	@Override
+	public void switchChanged(DatapathId switchId) {
 	}
 }
