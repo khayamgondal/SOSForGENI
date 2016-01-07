@@ -31,6 +31,13 @@ public interface ISOSAgent extends ISOSDevice {
 	 * @return
 	 */
 	public TransportPort getFeedbackPort();
+
+	/**
+	 * Retrieve the UDP port the agent sends
+	 * to for transfer statistics to the controller.
+	 * @return
+	 */
+	public TransportPort getStatsPort();
 	
 	/**
 	 * Retrieve all SOS sessions that are ongoing

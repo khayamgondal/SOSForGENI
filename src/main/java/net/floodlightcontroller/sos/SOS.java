@@ -754,6 +754,28 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 							statistics.removeActiveConnection(conn);
 						}
 						return Command.STOP; /* This packet was for our module from an agent */
+					} else if (agent.getIPAddr().equals(l3.getSourceAddress()) /* FROM known agent */
+							&& agent.getStatsPort().equals(l4.getDestinationPort())) { /* TO our stats port */
+						ISOSTransferStats stats = SOSTransferStats.parseFromJson(new String(((Data) l4.getPayload()).getData())); 
+						log.debug("Got transfer stats message from agent {} for UUID {}", agent.getIPAddr(), stats.getTransferID());
+
+						
+						SOSConnection conn = sosConnections.getConnection(stats.getTransferID());
+						if (conn == null) {
+							log.error("Could not locate UUID {} in connection storage. Report SOS bug", stats.getTransferID());
+							return Command.STOP; /* This WAS for us, but there was an error; no need to forward */
+						}
+
+						if (conn.getClientSideAgent().getActiveTransfers().contains(stats.getTransferID()) &&
+								conn.getClientSideAgent().getIPAddr().equals(l3.getSourceAddress()) &&
+								stats.isClientSideAgent()) {
+							log.warn("Received termination message from client side agent {} for transfer ID {}", conn.getClientSideAgent().getIPAddr(), stats.getTransferID());
+							conn.getClientSideAgent().removeTransferId(stats.getTransferID());
+							
+							log.info("Setting stats for client side agent {} for transfer ID {}", conn.getClientSideAgent().getIPAddr(), stats.getTransferID());
+							conn.updateTransferStats(stats);
+						}
+						return Command.STOP; /* this was for us */
 					}
 				} /* END FROM-AGENT LOOKUP */
 			} /* END IF UDP packet */

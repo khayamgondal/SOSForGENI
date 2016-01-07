@@ -1,6 +1,7 @@
 package net.floodlightcontroller.sos;
 
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 
 import net.floodlightcontroller.sos.web.SOSConnectionSerializer;
@@ -45,4 +46,8 @@ public interface ISOSConnection {
 	public Date getStopTime();
 
 	public ISOSTerminationStats getTerminationStats();
+	
+	public List<ISOSTransferStats> getServerSideTransferStats();
+	
+	public List<ISOSTransferStats> getClientSideTransferStats();
 }

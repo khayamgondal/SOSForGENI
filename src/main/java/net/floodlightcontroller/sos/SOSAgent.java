@@ -17,7 +17,8 @@ public class SOSAgent extends SOSDevice implements ISOSAgent {
 	private TransportPort data_port;
 	private TransportPort control_port;
 	private TransportPort feedback_port;
-	
+	private TransportPort stats_port;
+
 	private Set<UUID> active_transfers;
 	
 	public SOSAgent() {
@@ -25,13 +26,15 @@ public class SOSAgent extends SOSDevice implements ISOSAgent {
 		data_port = TransportPort.NONE;
 		control_port = TransportPort.NONE;
 		feedback_port = TransportPort.NONE;
+		stats_port = TransportPort.NONE;
 		active_transfers = new HashSet<UUID>();
 	}
-	public SOSAgent(IPv4Address ip, TransportPort data, TransportPort control, TransportPort feedback) {
+	public SOSAgent(IPv4Address ip, TransportPort data, TransportPort control, TransportPort feedback, TransportPort stats) {
 		super(SOSDeviceType.AGENT, ip);
 		data_port = data;
 		control_port = control;
 		feedback_port = feedback;
+		stats_port = stats;
 		active_transfers = new HashSet<UUID>();
 	}
 	
@@ -48,6 +51,11 @@ public class SOSAgent extends SOSDevice implements ISOSAgent {
 	@Override
 	public TransportPort getFeedbackPort() {
 		return feedback_port;
+	}
+	
+	@Override
+	public TransportPort getStatsPort() {
+		return stats_port;
 	}
 	
 	public boolean addTransferId(UUID newConnection) {
@@ -87,6 +95,8 @@ public class SOSAgent extends SOSDevice implements ISOSAgent {
 				+ ((data_port == null) ? 0 : data_port.hashCode());
 		result = prime * result
 				+ ((feedback_port == null) ? 0 : feedback_port.hashCode());
+		result = prime * result
+				+ ((stats_port == null) ? 0 : stats_port.hashCode());
 		return result;
 	}
 	
@@ -113,6 +123,11 @@ public class SOSAgent extends SOSDevice implements ISOSAgent {
 			if (other.feedback_port != null)
 				return false;
 		} else if (!feedback_port.equals(other.feedback_port))
+			return false;
+		if (stats_port == null) {
+			if (other.stats_port != null)
+				return false;
+		} else if (!stats_port.equals(other.stats_port))
 			return false;
 		return true;
 	}

@@ -424,7 +424,7 @@ public class SyncManager extends AbstractSyncManager {
 
     @Override
     public void shutdown() {
-        logger.debug("Shutting down Sync Manager: {} {}",
+        logger.info("Shutting down Sync Manager: {} {}",
                      clusterConfig.getNode().getHostname(),
                      clusterConfig.getNode().getPort());
 

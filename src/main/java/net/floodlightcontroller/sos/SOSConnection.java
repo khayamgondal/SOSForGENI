@@ -1,7 +1,10 @@
 package net.floodlightcontroller.sos;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -27,6 +30,8 @@ public class SOSConnection implements ISOSConnection {
 	private Date startTime;
 	private Date stopTime;
 	private ISOSTerminationStats stats;
+	private List<ISOSTransferStats> client_side_transfer_stats;
+	private List<ISOSTransferStats> server_side_transfer_stats;
 	
 	public SOSConnection(SOSRoute clientToAgent, SOSRoute interAgent,
 			SOSRoute serverToAgent, int numSockets, 
@@ -55,6 +60,8 @@ public class SOSConnection implements ISOSConnection {
 		this.flowNames = new HashSet<String>();
 		this.initTime = new Date();
 		this.stats = null;
+		this.server_side_transfer_stats = new ArrayList<ISOSTransferStats>();
+		this.client_side_transfer_stats = new ArrayList<ISOSTransferStats>();
 	}
 	
 	/**
@@ -180,9 +187,36 @@ public class SOSConnection implements ISOSConnection {
 		return flowTimeout;
 	}
 	
+	/**
+	 * The final stats of a transfer.
+	 */
 	@Override 
 	public ISOSTerminationStats getTerminationStats() {
 		return stats;
+	}
+	
+	/**
+	 * The periodic stats of a transfer.
+	 */
+	@Override
+	public List<ISOSTransferStats> getServerSideTransferStats() {
+		return Collections.unmodifiableList(this.server_side_transfer_stats);
+	}
+	
+	/**
+	 * The periodic stats of a transfer.
+	 */
+	@Override
+	public List<ISOSTransferStats> getClientSideTransferStats() {
+		return Collections.unmodifiableList(this.client_side_transfer_stats);
+	}
+	
+	public void updateTransferStats(ISOSTransferStats newStats) {
+		if (newStats.isClientSideAgent()) {
+			this.client_side_transfer_stats.add(newStats);
+		} else {
+			this.server_side_transfer_stats.add(newStats);
+		}
 	}
 	
 	public Set<String> getFlowNames() {

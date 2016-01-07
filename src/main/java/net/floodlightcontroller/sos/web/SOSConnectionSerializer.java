@@ -41,7 +41,9 @@ public class SOSConnectionSerializer extends JsonSerializer<ISOSConnection> {
 		jGen.writeStringField("time-init", conn.getInitTime() == null ? "none" : conn.getInitTime().toString());
 		jGen.writeStringField("time-start", conn.getStartTime() == null ? "none" : conn.getStartTime().toString());
 		jGen.writeStringField("time-stop", conn.getStopTime() == null ? "none" : conn.getStopTime().toString());
-		jGen.writeObjectField("transfer-stats", conn.getTerminationStats() == null ? "none" : conn.getTerminationStats());
+		jGen.writeObjectField("termination-stats", conn.getTerminationStats() == null ? "none" : conn.getTerminationStats());
+		jGen.writeObjectField("client-side-agent-transfer-stats", conn.getClientSideTransferStats() == null ? "none" : conn.getClientSideTransferStats());
+		jGen.writeObjectField("server-side-agent-transfer-stats", conn.getServerSideTransferStats() == null ? "none" : conn.getServerSideTransferStats());
 
 		jGen.writeEndObject();
 	}
