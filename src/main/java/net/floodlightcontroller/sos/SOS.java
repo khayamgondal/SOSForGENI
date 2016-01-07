@@ -769,12 +769,16 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 						if (conn.getClientSideAgent().getActiveTransfers().contains(stats.getTransferID()) &&
 								conn.getClientSideAgent().getIPAddr().equals(l3.getSourceAddress()) &&
 								stats.isClientSideAgent()) {
-							log.warn("Received termination message from client side agent {} for transfer ID {}", conn.getClientSideAgent().getIPAddr(), stats.getTransferID());
-							conn.getClientSideAgent().removeTransferId(stats.getTransferID());
 							
 							log.info("Setting stats for client side agent {} for transfer ID {}", conn.getClientSideAgent().getIPAddr(), stats.getTransferID());
 							conn.updateTransferStats(stats);
+						} else if (conn.getServerSideAgent().getActiveTransfers().contains(stats.getTransferID()) &&
+										conn.getServerSideAgent().getIPAddr().equals(l3.getSourceAddress()) &&
+										!stats.isClientSideAgent()) {
+							log.info("Setting stats for server side agent {} for transfer ID {}", conn.getServerSideAgent().getIPAddr(), stats.getTransferID());
+							conn.updateTransferStats(stats);
 						}
+						
 						return Command.STOP; /* this was for us */
 					}
 				} /* END FROM-AGENT LOOKUP */

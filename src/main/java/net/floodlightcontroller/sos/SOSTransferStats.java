@@ -164,7 +164,7 @@ public class SOSTransferStats implements ISOSTransferStats {
 									} catch (NumberFormatException e) {
 										log.error("Could not parse '{}' of '{}'. Using default of -1.", STR_KEY_SOCKET_ID, value);
 									}
-								break;
+									break;
 								case (STR_KEY_CUMULATIVE_THROUGHPUT):
 									try {
 										sock_cum_tput_tmp = Integer.parseInt(value);
@@ -192,12 +192,6 @@ public class SOSTransferStats implements ISOSTransferStats {
 								stats.throughput_per_socket.put(socket_id, ThroughputTuple.of(U64.of(sock_cum_tput_tmp), U64.of(sock_roll_tput_tmp)));
 							}
 						}
-
-						jp.nextToken();
-						value = jp.getText().toLowerCase().trim();
-						if (value.isEmpty() || key.isEmpty()) {
-							continue;
-						} 
 					} else {
 						throw new IOException("Expected START_ARRAY");
 					}
