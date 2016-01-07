@@ -31,7 +31,6 @@ public class SOSTransferStatsSerializer extends JsonSerializer<ISOSTransferStats
 		jGen.writeStringField(ISOSTransferStats.STR_KEY_TRANSFER_ID, stats.getTransferID().toString());
 		jGen.writeStringField(ISOSTransferStats.STR_KEY_TYPE, stats.isClientSideAgent() ? "client-side-agent" : "server-side-agent");
 		jGen.writeArrayFieldStart(ISOSTransferStats.STR_KEY_PER_SOCKET_THROUGHPUT);
-		jGen.writeStartArray();
 		for (int id : stats.getAllSocketsThroughput().keySet()) {
 			jGen.writeStartObject();
 			jGen.writeNumberField(ISOSTransferStats.STR_KEY_SOCKET_ID, id);
