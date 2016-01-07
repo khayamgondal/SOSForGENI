@@ -110,7 +110,7 @@ public class SOSTransferStats implements ISOSTransferStats {
 				case STR_KEY_CUMULATIVE_THROUGHPUT:
 					value = jp.getText().toLowerCase().trim();
 					try {
-						agg_cum_tput_tmp = Integer.parseInt(value);
+						agg_cum_tput_tmp = Long.parseLong(value);
 					} catch (NumberFormatException e) {
 						log.error("Could not parse '{}' of '{}'. Using default of 0.", STR_KEY_CUMULATIVE_THROUGHPUT, value);
 						agg_cum_tput_tmp = 0;
@@ -119,7 +119,7 @@ public class SOSTransferStats implements ISOSTransferStats {
 				case STR_KEY_ROLLING_THROUGHPUT:
 					value = jp.getText().toLowerCase().trim();
 					try {
-						agg_roll_tput_tmp = Integer.parseInt(value);
+						agg_roll_tput_tmp = Long.parseLong(value);
 					} catch (NumberFormatException e) {
 						log.error("Could not parse '{}' of '{}'. Using default of 0.", STR_KEY_ROLLING_THROUGHPUT, value);
 						agg_roll_tput_tmp = 0;
@@ -167,7 +167,7 @@ public class SOSTransferStats implements ISOSTransferStats {
 									break;
 								case (STR_KEY_CUMULATIVE_THROUGHPUT):
 									try {
-										sock_cum_tput_tmp = Integer.parseInt(value);
+										sock_cum_tput_tmp = Long.parseLong(value);
 									} catch (NumberFormatException e) {
 										log.error("Could not parse '{}' of '{}'. Using default of 0.", STR_KEY_CUMULATIVE_THROUGHPUT, value);
 										sock_cum_tput_tmp = 0;
@@ -175,7 +175,7 @@ public class SOSTransferStats implements ISOSTransferStats {
 									break;
 								case (STR_KEY_ROLLING_THROUGHPUT):
 									try {
-										sock_roll_tput_tmp = Integer.parseInt(value);
+										sock_roll_tput_tmp = Long.parseLong(value);
 									} catch (NumberFormatException e) {
 										log.error("Could not parse '{}' of '{}'. Using default of 0.", STR_KEY_ROLLING_THROUGHPUT, value);
 										sock_roll_tput_tmp = 0;
