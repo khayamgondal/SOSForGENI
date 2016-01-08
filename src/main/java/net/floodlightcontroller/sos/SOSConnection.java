@@ -212,10 +212,30 @@ public class SOSConnection implements ISOSConnection {
 	}
 	
 	public void updateTransferStats(ISOSTransferStats newStats) {
+		boolean isUpdate = false;
 		if (newStats.isClientSideAgent()) {
-			this.client_side_transfer_stats.add(newStats);
+			/* we count down, since if we are updating, it should be at the end */
+			for (int i = client_side_transfer_stats.size() - 1; i >= 0; i--) {
+				if (client_side_transfer_stats.get(i).getCollectionTime() == newStats.getCollectionTime()) {
+					((SOSTransferStats) client_side_transfer_stats.get(i)).appendStats(newStats);
+					isUpdate = true;
+					break;
+				}
+			}
+			if (!isUpdate) {
+				this.client_side_transfer_stats.add(newStats);
+			}
 		} else {
-			this.server_side_transfer_stats.add(newStats);
+			for (int i = server_side_transfer_stats.size() - 1; i >= 0; i--) {
+				if (server_side_transfer_stats.get(i).getCollectionTime() == newStats.getCollectionTime()) {
+					((SOSTransferStats) server_side_transfer_stats.get(i)).appendStats(newStats);
+					isUpdate = true;
+					break;
+				}
+			}
+			if (!isUpdate) {
+				this.server_side_transfer_stats.add(newStats);
+			}
 		}
 	}
 	

@@ -259,4 +259,26 @@ public class SOSTransferStats implements ISOSTransferStats {
 	public boolean isClientSideAgent() {
 		return is_client_side_agent;
 	}
+	
+	/**
+	 * Add data to the existing stats object.
+	 * @param moreStats
+	 */
+	public void appendStats(ISOSTransferStats moreStats) {
+		if (this.timestamp.getTime() != moreStats.getCollectionTime()) {
+			throw new IllegalArgumentException("Should not update an ISOSTransferStats that is not from the same capture time.");
+		}
+		if (!this.getTransferID().equals(moreStats.getTransferID())) {
+			throw new IllegalArgumentException("Should not update an ISOSTransferStats that is not from the same transfer ID.");
+		}
+		if (this.isClientSideAgent() != moreStats.isClientSideAgent()) {
+			throw new IllegalArgumentException("Should not update an ISOSTransferStats that are not from the same agent.");
+		}
+		
+		if (!moreStats.getAggregateCumulativeThroughput().equals(U64.ZERO) || !moreStats.getAggregateRollingThroughput().equals(U64.ZERO)) {
+			this.throughput_aggregate = ThroughputTuple.of(moreStats.getAggregateCumulativeThroughput(), moreStats.getAggregateRollingThroughput());
+		}
+		
+		this.throughput_per_socket.putAll(moreStats.getAllSocketsThroughput());
+	}
 }
