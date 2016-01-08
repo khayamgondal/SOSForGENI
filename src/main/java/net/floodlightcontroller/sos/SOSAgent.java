@@ -82,7 +82,7 @@ public class SOSAgent extends SOSDevice implements ISOSAgent {
 	@Override
 	public String toString() {
 		return "SOSAgent [ " + super.toString() + " data_port=" + data_port + ", control_port="
-				+ control_port + " feedback_port=" + feedback_port + "]";
+				+ control_port + " feedback_port=" + feedback_port + " stats_port=" + stats_port + "]";
 	}
 	
 	@Override

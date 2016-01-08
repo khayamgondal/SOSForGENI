@@ -67,12 +67,12 @@ public class SOSStatistics implements ISOSStatistics {
 		active.add(conn);
 	}
 	
-	public void removeActiveConnection(ISOSConnection conn) {
-		active.remove(conn);
+	public boolean removeActiveConnection(ISOSConnection conn) {
 		if (terminated.size() == terminatedCapacity) {
 			terminated.poll(); /* trash oldest */
 		}
 		terminated.add(conn);
+		return active.remove(conn);
 	}
 	
 	@Override

@@ -751,7 +751,10 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 							log.warn("Received reports from all agents of transfer ID {}. Terminating SOS transfer", stats.getTransferID());
 							conn.setStopTime();
 							sosConnections.removeConnection(stats.getTransferID());
-							statistics.removeActiveConnection(conn);
+							
+							if (!statistics.removeActiveConnection(conn)) {
+								log.error("Could not remove connection {} from SOSStatistics object. Report SOS bug", conn);
+							}
 						}
 						return Command.STOP; /* This packet was for our module from an agent */
 					} else if (agent.getIPAddr().equals(l3.getSourceAddress()) /* FROM known agent */
