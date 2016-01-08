@@ -263,20 +263,6 @@ public class SOSConnection implements ISOSConnection {
 		final int prime = 31;
 		int result = 1;
 		result = prime * result
-				+ ((agentToAgent == null) ? 0 : agentToAgent.hashCode());
-		result = prime * result + bufferSize;
-		result = prime * result
-				+ ((clientToAgent == null) ? 0 : clientToAgent.hashCode());
-		result = prime * result
-				+ ((flowNames == null) ? 0 : flowNames.hashCode());
-		result = prime * result + numParallelSockets;
-		result = prime * result + queueCapacity;
-		result = prime * result + flowTimeout;
-		result = prime * result
-				+ ((serverAgentPort == null) ? 0 : serverAgentPort.hashCode());
-		result = prime * result
-				+ ((serverToAgent == null) ? 0 : serverToAgent.hashCode());
-		result = prime * result
 				+ ((transferId == null) ? 0 : transferId.hashCode());
 		return result;
 	}
@@ -290,39 +276,6 @@ public class SOSConnection implements ISOSConnection {
 		if (getClass() != obj.getClass())
 			return false;
 		SOSConnection other = (SOSConnection) obj;
-		if (agentToAgent == null) {
-			if (other.agentToAgent != null)
-				return false;
-		} else if (!agentToAgent.equals(other.agentToAgent))
-			return false;
-		if (bufferSize != other.bufferSize)
-			return false;
-		if (clientToAgent == null) {
-			if (other.clientToAgent != null)
-				return false;
-		} else if (!clientToAgent.equals(other.clientToAgent))
-			return false;
-		if (flowNames == null) {
-			if (other.flowNames != null)
-				return false;
-		} else if (!flowNames.equals(other.flowNames))
-			return false;
-		if (numParallelSockets != other.numParallelSockets)
-			return false;
-		if (queueCapacity != other.queueCapacity)
-			return false;
-		if (flowTimeout != other.flowTimeout)
-			return false;
-		if (serverAgentPort == null) {
-			if (other.serverAgentPort != null)
-				return false;
-		} else if (!serverAgentPort.equals(other.serverAgentPort))
-			return false;
-		if (serverToAgent == null) {
-			if (other.serverToAgent != null)
-				return false;
-		} else if (!serverToAgent.equals(other.serverToAgent))
-			return false;
 		if (transferId == null) {
 			if (other.transferId != null)
 				return false;
