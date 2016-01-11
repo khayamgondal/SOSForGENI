@@ -1249,6 +1249,12 @@ public class SOS implements IOFMessageListener, IOFSwitchListener, IFloodlightMo
 	public ISOSStatistics getStatistics() {
 		return statistics;
 	}
+	
+	@Override
+	public SOSReturnCode clearStatistics() {
+		statistics.clear();
+		return SOSReturnCode.STATS_CLEARED;
+	}
 
 	@Override
 	public synchronized SOSReturnCode setFlowTimeouts(int hardSeconds, int idleSeconds) {

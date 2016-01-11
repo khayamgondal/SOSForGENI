@@ -13,7 +13,8 @@ public interface ISOSService extends IFloodlightService {
 		ERR_DUPLICATE_AGENT, ERR_UNKNOWN_AGENT,
 		ENABLED, DISABLED,
 		CONFIG_SET,
-		READY, NOT_READY
+		READY, NOT_READY,
+		STATS_CLEARED
 	}
 
 	/**
@@ -83,6 +84,12 @@ public interface ISOSService extends IFloodlightService {
 	 * @return
 	 */
 	public ISOSStatistics getStatistics();
+	
+	/**
+	 * Clear SOS running statistics.
+	 * @return
+	 */
+	public SOSReturnCode clearStatistics();
 	
 	/**
 	 * Configure flow timeouts

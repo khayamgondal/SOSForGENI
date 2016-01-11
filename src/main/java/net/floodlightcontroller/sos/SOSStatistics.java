@@ -88,6 +88,11 @@ public class SOSStatistics implements ISOSStatistics {
 		agents.remove(agent);
 	}
 	
+	public void clear() {
+		active.clear();
+		terminated.clear();
+	}
+	
 	@Override
 	public Collection<ISOSAgent> getAgents() {
 		return Collections.unmodifiableCollection(agents);
