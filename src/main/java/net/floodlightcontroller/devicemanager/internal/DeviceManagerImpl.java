@@ -1176,6 +1176,9 @@ public class DeviceManagerImpl implements IDeviceService, IOFMessageListener, IT
 		OFPort inPort = (pi.getVersion().compareTo(OFVersion.OF_12) < 0 ? pi.getInPort() : pi.getMatch().get(MatchField.IN_PORT));
 		// Extract source entity information
 		Entity srcEntity = getSourceEntityFromPacket(eth, sw.getId(), inPort);
+		logger.debug("Got packetin: {}", eth);
+		logger.debug("Switch DPID and Port: {}  {}", sw.getId(), inPort);
+
 		if (srcEntity == null) {
 			cntInvalidSource.increment();
 			return Command.STOP;

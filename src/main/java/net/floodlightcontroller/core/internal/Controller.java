@@ -441,6 +441,7 @@ public class Controller implements IFloodlightProviderService, IStorageSourceLis
                 if (Controller.ALWAYS_DECODE_ETH) {
                     eth = new Ethernet();
                     eth.deserialize(pi.getData(), 0, pi.getData().length);
+                    log.debug("Received eth packet in core: {}", eth);
                 }
                 // fall through to default case...
 
